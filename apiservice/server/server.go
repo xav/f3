@@ -179,7 +179,7 @@ func (s *Server) CreatePayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.Nats.Publish(string(events.CreatePaymentEvent), data); err != nil {
+	if err := s.Nats.Publish(string(events.CreatePayment), data); err != nil {
 		log.WithError(err).Error("Failed to publish create event")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -213,8 +213,8 @@ func (s *Server) UpdatePayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.Nats.Publish(string(events.UpdatePaymentEvent), data); err != nil {
-		log.WithError(err).Error("Failed to publish create event")
+	if err := s.Nats.Publish(string(events.UpdatePayment), data); err != nil {
+		log.WithError(err).Error("failed to publish create event")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

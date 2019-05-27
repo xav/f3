@@ -146,6 +146,7 @@ func (f *APICreatePaymentFixture) Setup() {
 }
 
 func (f *APICreatePaymentFixture) TestCreatePayment() {
+	//noinspection SpellCheckingInspection
 	input := `{
   "type": "Payment",
   "id": "4ee3a8d8-ca7b-4290-a52c-dd5b6165ec43",
@@ -214,7 +215,7 @@ func (f *APICreatePaymentFixture) TestCreatePayment() {
 	req := httptest.NewRequest("POST", "/", strings.NewReader(input))
 
 	f.nats.
-		On("Publish", string(events.CreatePaymentEvent), mock.Anything).
+		On("Publish", string(events.CreatePayment), mock.Anything).
 		Return(nil)
 
 	handler := http.HandlerFunc(f.server.CreatePayment)
@@ -223,6 +224,7 @@ func (f *APICreatePaymentFixture) TestCreatePayment() {
 }
 
 func (f *APICreatePaymentFixture) TestCreatePayment_BadInput() {
+	//noinspection SpellCheckingInspection
 	input := `{
   "type": "Payment",
   "id": "4ee3a8d8-ca7b-4290-a52c-dd5b6165ec43",
@@ -310,6 +312,7 @@ func (f *APICreatePaymentFixture) TestCreatePayment_MissingAttributes() {
 }
 
 func (f *APICreatePaymentFixture) TestCreatePayment_MissingPaymentId() {
+	//noinspection SpellCheckingInspection
 	input := `{
   "type": "Payment",
   "id": "4ee3a8d8-ca7b-4290-a52c-dd5b6165ec43",
@@ -382,6 +385,7 @@ func (f *APICreatePaymentFixture) TestCreatePayment_MissingPaymentId() {
 }
 
 func (f *APICreatePaymentFixture) TestCreatePayment_QueueError() {
+	//noinspection SpellCheckingInspection
 	input := `{
   "type": "Payment",
   "id": "4ee3a8d8-ca7b-4290-a52c-dd5b6165ec43",
@@ -450,7 +454,7 @@ func (f *APICreatePaymentFixture) TestCreatePayment_QueueError() {
 	req := httptest.NewRequest("POST", "/", strings.NewReader(input))
 
 	f.nats.
-		On("Publish", string(events.CreatePaymentEvent), mock.Anything).
+		On("Publish", string(events.CreatePayment), mock.Anything).
 		Return(errors.New("queue error"))
 
 	handler := http.HandlerFunc(f.server.CreatePayment)
@@ -486,6 +490,7 @@ func (f *APIUpdatePaymentFixture) Setup() {
 }
 
 func (f *APIUpdatePaymentFixture) TestUpdatePayment() {
+	//noinspection SpellCheckingInspection
 	input := `{
   "type": "Payment",
   "id": "4ee3a8d8-ca7b-4290-a52c-dd5b6165ec43",
@@ -554,7 +559,7 @@ func (f *APIUpdatePaymentFixture) TestUpdatePayment() {
 	req := httptest.NewRequest("PUT", "/", strings.NewReader(input))
 
 	f.nats.
-		On("Publish", string(events.UpdatePaymentEvent), mock.Anything).
+		On("Publish", string(events.UpdatePayment), mock.Anything).
 		Return(nil)
 
 	handler := http.HandlerFunc(f.server.UpdatePayment)
@@ -563,6 +568,7 @@ func (f *APIUpdatePaymentFixture) TestUpdatePayment() {
 }
 
 func (f *APIUpdatePaymentFixture) TestUpdatePayment_BadInput() {
+	//noinspection SpellCheckingInspection
 	input := `{
   "type": "Payment",
   "id": "4ee3a8d8-ca7b-4290-a52c-dd5b6165ec43",
@@ -654,6 +660,7 @@ func (f *APIUpdatePaymentFixture) TestUpdatePayment_MissingAttributes() {
 }
 
 func (f *APIUpdatePaymentFixture) TestUpdatePayment_MissingPaymentId() {
+	//noinspection SpellCheckingInspection
 	input := `{
   "type": "Payment",
   "id": "4ee3a8d8-ca7b-4290-a52c-dd5b6165ec43",
@@ -730,6 +737,7 @@ func (f *APIUpdatePaymentFixture) TestUpdatePayment_MissingPaymentId() {
 }
 
 func (f *APIUpdatePaymentFixture) TestUpdatePayment_QueueError() {
+	//noinspection SpellCheckingInspection
 	input := `{
   "type": "Payment",
   "id": "4ee3a8d8-ca7b-4290-a52c-dd5b6165ec43",
@@ -798,7 +806,7 @@ func (f *APIUpdatePaymentFixture) TestUpdatePayment_QueueError() {
 	req := httptest.NewRequest("PUT", "/", strings.NewReader(input))
 
 	f.nats.
-		On("Publish", string(events.UpdatePaymentEvent), mock.Anything).
+		On("Publish", string(events.UpdatePayment), mock.Anything).
 		Return(errors.New("queue error"))
 
 	handler := http.HandlerFunc(f.server.UpdatePayment)
