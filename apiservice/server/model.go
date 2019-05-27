@@ -29,6 +29,9 @@ func (p *Payment) Validate() error {
 	if p.Attributes == nil {
 		return errors.New("missing payment attributes")
 	}
+	if p.Attributes.PaymentID == "" {
+		return errors.New("missing payment id")
+	}
 	// TODO: Validate all fields
 	return nil
 }

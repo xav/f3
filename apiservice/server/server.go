@@ -125,10 +125,10 @@ func (s *Server) routes(r *chi.Mux) error {
 	r.Route("/v1", func(r chi.Router) {
 		r.Get("/", s.routesHandler.ListPayments)   // GET  /
 		r.Post("/", s.routesHandler.CreatePayment) // POST /
+		r.Put("/", s.routesHandler.UpdatePayment)  // PUT  /
 
 		r.Route("/{"+paymentURLParam+"}", func(r chi.Router) {
 			r.Get("/", s.routesHandler.FetchPayment)     // GET    /{payment}
-			r.Put("/", s.routesHandler.UpdatePayment)    // PUT    /{payment}
 			r.Delete("/", s.routesHandler.DeletePayment) // DELETE /{payment}
 		})
 	})
@@ -190,7 +190,33 @@ func (s *Server) FetchPayment(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) UpdatePayment(w http.ResponseWriter, r *http.Request) {
-	render.DefaultResponder(w, r, "UpdatePayment")
+	payment := Payment{}
+
+	if err := json.NewDecoder(r.Body).Decode(&payment); err != nil {
+		log.WithError(err).Warnf("invalid request: '%v'", r.Body)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := payment.Validate(); err != nil {
+		log.WithError(err).Warnf("invalid request: '%v'", r.Body)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	data, err := bson.Marshal(payment)
+	if err != nil {
+		log.WithError(err).Error("failed to marshal payment data")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := s.Nats.Publish(string(events.UpdatePaymentEvent), data); err != nil {
+		log.WithError(err).Error("Failed to publish create event")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	render.Status(r, http.StatusAccepted)
+	render.DefaultResponder(w, r, "CreatePayment")
 }
 
 func (s *Server) DeletePayment(w http.ResponseWriter, r *http.Request) {
