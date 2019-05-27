@@ -31,16 +31,11 @@ jobs:
 
       - run: go get -v -t -d ./apiservice/...
 
-      - run: go get -v github.com/mattn/goveralls
-
       - run:
           name: Run unit tests
           # Store the results of our tests in the /tmp/artifacts directory
           command: |
-            go test ./apiservice/... -coverprofile=api_coverage.out
-            go tool cover -html=api_coverage.out -o api_coverage.html
-            mv api_coverage.out /tmp/artifacts
-            mv api_coverage.html /tmp/artifacts
+            go test ./apiservice/...
 
       # - run: make # pull and build dependencies for the project
 
@@ -49,18 +44,3 @@ jobs:
           key: v1-pkg-cache
           paths:
             - "/go/pkg"
-
-      # Upload test summary for display in Artifacts: https://circleci.com/docs/2.0/artifacts/
-      - store_artifacts:
-          path: /tmp/artifacts
-          destination: raw-test-output
-
-      # Upload test results for display in Test Summary: https://circleci.com/docs/2.0/collect-test-data/
-      - store_test_results:
-          path: /tmp/artifacts
-
-      # Upload test coverage results to Coveralls
-      - run:
-          name: Upload Coverage Results
-          command: |
-            goveralls -coverprofile=/tmp/artifacts/api_coverage.out -service=circle-ci -repotoken $COVERALLS_TOKEN
