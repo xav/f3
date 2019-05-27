@@ -17,13 +17,13 @@ package events
 type EventType string
 
 const (
-	CreatePaymentEvent EventType = "payment:create"
-	UpdatePaymentEvent EventType = "payment:update"
-	DeletePaymentEvent EventType = "payment:delete"
+	CreatePayment EventType = "payment:create"
+	UpdatePayment EventType = "payment:update"
+	DeletePayment EventType = "payment:delete"
 
-	FetchPaymentEvent EventType = "payment:fetch"
-	ListPaymentEvent  EventType = "payment:list"
+	FetchPayment EventType = "payment:fetch"
+	ListPayment  EventType = "payment:list"
 
-	PaymentFoundEvent    EventType = "payment:found"
-	PaymentNotFoundEvent EventType = "payment:notfound"
+	PaymentFound    EventType = "payment:found"
+	PaymentNotFound EventType = "payment:notfound"
 )
