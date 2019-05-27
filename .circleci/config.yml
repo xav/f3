@@ -1,7 +1,13 @@
-version: 2.1
+version: 2
+
+workflows:
+  version: 2
+  build_api:
+    jobs:
+      - build_api
 
 jobs:
-  build:
+  build_api:
     docker:
       - image: circleci/golang:1.12 #
 
@@ -16,14 +22,14 @@ jobs:
       - run:
           name: "Create a temp directory for artifacts"
           command: |
-            mkdir -p /tmp/artifacts
+            mkdir -p $TEST_RESULTS
 
       # restores saved cache if no changes are detected since last run
       - restore_cache:
           keys:
             - v1-pkg-cache
 
-      - run: go get -v -t -d ./...
+      - run: go get -v -t -d ./apiservice/...
 
       - run: go get -v github.com/mattn/goveralls
 
@@ -31,10 +37,10 @@ jobs:
           name: Run unit tests
           # Store the results of our tests in the /tmp/artifacts directory
           command: |
-            go test ./... -coverprofile=coverage.out
-            go tool cover -html=coverage.out -o coverage.html
-            mv coverage.out /tmp/artifacts
-            mv coverage.html /tmp/artifacts
+            go test ./apiservice/... -coverprofile=api_coverage.out
+            go tool cover -html=api_coverage.out -o api_coverage.html
+            mv api_coverage.out /tmp/artifacts
+            mv api_coverage.html /tmp/artifacts
 
       # - run: make # pull and build dependencies for the project
 
@@ -58,8 +64,3 @@ jobs:
           name: Upload Coverage Results
           command: |
             goveralls -coverprofile=/tmp/artifacts/coverage.out -service=circle-ci -repotoken $COVERALLS_TOKEN
-workflows:
-  version: 2
-  build-workflow:
-    jobs:
-      - build
