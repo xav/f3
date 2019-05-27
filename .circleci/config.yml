@@ -63,4 +63,4 @@ jobs:
       - run:
           name: Upload Coverage Results
           command: |
-            goveralls -coverprofile=/tmp/artifacts/coverage.out -service=circle-ci -repotoken $COVERALLS_TOKEN
+            goveralls -coverprofile=/tmp/artifacts/api_coverage.out -service=circle-ci -repotoken $COVERALLS_TOKEN
