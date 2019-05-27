@@ -97,13 +97,6 @@ func (f *RoutesFixture) TestCreatePayment() {
 	f.AssertEqual("CreatePayment", f.rr.Body.String())
 }
 
-func (f *RoutesFixture) TestFetchPayment() {
-	request := httptest.NewRequest("GET", "/v1/paymentId", nil)
-	f.server.Router.ServeHTTP(f.rr, request)
-	f.AssertEqual(http.StatusOK, f.rr.Code)
-	f.AssertEqual("FetchPayment", f.rr.Body.String())
-}
-
 func (f *RoutesFixture) TestUpdatePayment() {
 	request := httptest.NewRequest("PUT", "/v1", nil)
 	f.server.Router.ServeHTTP(f.rr, request)
@@ -111,8 +104,15 @@ func (f *RoutesFixture) TestUpdatePayment() {
 	f.AssertEqual("UpdatePayment", f.rr.Body.String())
 }
 
+func (f *RoutesFixture) TestFetchPayment() {
+	request := httptest.NewRequest("GET", "/v1/orgId/paymentId", nil)
+	f.server.Router.ServeHTTP(f.rr, request)
+	f.AssertEqual(http.StatusOK, f.rr.Code)
+	f.AssertEqual("FetchPayment", f.rr.Body.String())
+}
+
 func (f *RoutesFixture) TestDeletePayment() {
-	request := httptest.NewRequest("DELETE", "/v1/paymentId", nil)
+	request := httptest.NewRequest("DELETE", "/v1/orgId/paymentId", nil)
 	f.server.Router.ServeHTTP(f.rr, request)
 	f.AssertEqual(http.StatusOK, f.rr.Code)
 	f.AssertEqual("DeletePayment", f.rr.Body.String())

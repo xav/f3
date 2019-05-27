@@ -42,7 +42,10 @@ type Server struct {
 	ctx           context.Context
 }
 
-const paymentURLParam = "payment"
+const (
+	organisationURLParam = "organisation"
+	paymentURLParam      = "payment"
+)
 
 // NewServer returns a valid Server.
 func NewServer(options ...func(s *Server) error) (*Server, error) {
@@ -127,7 +130,7 @@ func (s *Server) routes(r *chi.Mux) error {
 		r.Post("/", s.routesHandler.CreatePayment) // POST /
 		r.Put("/", s.routesHandler.UpdatePayment)  // PUT  /
 
-		r.Route("/{"+paymentURLParam+"}", func(r chi.Router) {
+		r.Route("/{"+organisationURLParam+"}/{"+paymentURLParam+"}", func(r chi.Router) {
 			r.Get("/", s.routesHandler.FetchPayment)     // GET    /{payment}
 			r.Delete("/", s.routesHandler.DeletePayment) // DELETE /{payment}
 		})
