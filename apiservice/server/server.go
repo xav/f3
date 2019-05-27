@@ -16,6 +16,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -29,6 +30,8 @@ import (
 	"github.com/go-chi/render"
 	"github.com/go-chi/valve"
 	"github.com/pkg/errors"
+	"github.com/xav/f3/events"
+	"gopkg.in/mgo.v2/bson"
 )
 
 type Server struct {
@@ -153,6 +156,32 @@ func (s *Server) ListPayments(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) CreatePayment(w http.ResponseWriter, r *http.Request) {
+	payment := Payment{}
+
+	if err := json.NewDecoder(r.Body).Decode(&payment); err != nil {
+		log.WithError(err).Warnf("invalid request: '%v'", r.Body)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := payment.Validate(); err != nil {
+		log.WithError(err).Warnf("invalid request: '%v'", r.Body)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	data, err := bson.Marshal(payment)
+	if err != nil {
+		log.WithError(err).Error("failed to marshal payment data")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := s.Nats.Publish(string(events.CreatePaymentEvent), data); err != nil {
+		log.WithError(err).Error("Failed to publish create event")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	render.Status(r, http.StatusAccepted)
 	render.DefaultResponder(w, r, "CreatePayment")
 }
 

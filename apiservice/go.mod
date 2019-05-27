@@ -3,6 +3,7 @@ module github.com/xav/f3/apiservice
 go 1.12
 
 require (
+	cloud.google.com/go v0.39.0
 	github.com/apex/log v1.1.0
 	github.com/fatih/color v1.7.0 // indirect
 	github.com/go-chi/chi v4.0.2+incompatible
@@ -21,5 +22,7 @@ require (
 	github.com/spf13/cobra v0.0.4
 	github.com/stretchr/objx v0.2.0 // indirect
 	github.com/stretchr/testify v1.3.0
+	github.com/xav/f3/events v0.0.0-20190527120355-1b371f6286f1
 	golang.org/x/net v0.0.0-20190522155817-f3200d17e092 // indirect
+	gopkg.in/mgo.v2 v2.0.0-20180705113604-9856a29383ce
 )

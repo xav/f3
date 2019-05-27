@@ -15,14 +15,22 @@
 package server
 
 import (
-	"time"
-
+	"cloud.google.com/go/civil"
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 )
 
 type Payment struct {
-	OrganisationID uuid.UUID         `json:"organisation_id" bson:"organisation_id"`
-	Attributes     PaymentAttributes `json:"attributes"      bson:"attributes"`
+	OrganisationID uuid.UUID          `json:"organisation_id" bson:"organisation_id"`
+	Attributes     *PaymentAttributes `json:"attributes"      bson:"attributes"`
+}
+
+func (p *Payment) Validate() error {
+	if p.Attributes == nil {
+		return errors.New("missing payment attributes")
+	}
+	// TODO: Validate all fields
+	return nil
 }
 
 type PaymentType string
@@ -36,34 +44,34 @@ const (
 )
 
 type PaymentAttributes struct {
-	PaymentID            string               `json:"payment_id"              bson:"payment_id"`
-	Amount               float32              `json:"amount"                  bson:"amount"`
-	Currency             Currency             `json:"currency"                bson:"currency"`
-	Purpose              string               `json:"payment_purpose"         bson:"payment_purpose"`
-	Scheme               string               `json:"payment_scheme"          bson:"payment_scheme"`
-	Type                 PaymentType          `json:"payment_type"            bson:"payment_type"`
-	ProcessingDate       time.Time            `json:"processing_date"         bson:"processing_date"`
-	NumericReference     uint64               `json:"numeric_reference"       bson:"numeric_reference"`
-	Reference            string               `json:"reference"               bson:"reference"`
-	EndToEndReference    string               `json:"end_to_end_reference"    bson:"end_to_end_reference"`
-	ChargesInformation   ChangersInformation  `json:"charges_information"     bson:"charges_information"`
-	Exchange             interface{}          `json:"fx"                      bson:"fx"`
-	SchemePaymentSubType SchemePaymentSubType `json:"scheme_payment_sub_type" bson:"scheme_payment_sub_type"`
-	SchemePaymentType    SchemePaymentType    `json:"scheme_payment_type"     bson:"scheme_payment_type"`
-	BeneficiaryParty     interface{}          `json:"beneficiary_party"       bson:"beneficiary_party"`
-	DebtorParty          interface{}          `json:"debtor_party"            bson:"debtor_party"`
-	SponsorParty         interface{}          `json:"sponsor_party"           bson:"sponsor_party"`
+	PaymentID            string               `json:"payment_id"               bson:"payment_id"`
+	Amount               float32              `json:"amount,string"            bson:"amount"`
+	Currency             Currency             `json:"currency"                 bson:"currency"`
+	Purpose              string               `json:"payment_purpose"          bson:"payment_purpose"`
+	Scheme               string               `json:"payment_scheme"           bson:"payment_scheme"`
+	Type                 PaymentType          `json:"payment_type"             bson:"payment_type"`
+	ProcessingDate       civil.Date           `json:"processing_date"          bson:"processing_date"`
+	NumericReference     uint64               `json:"numeric_reference,string" bson:"numeric_reference"`
+	Reference            string               `json:"reference"                bson:"reference"`
+	EndToEndReference    string               `json:"end_to_end_reference"     bson:"end_to_end_reference"`
+	ChargesInformation   ChangersInformation  `json:"charges_information"      bson:"charges_information"`
+	Exchange             interface{}          `json:"fx"                       bson:"fx"`
+	SchemePaymentSubType SchemePaymentSubType `json:"scheme_payment_sub_type"  bson:"scheme_payment_sub_type"`
+	SchemePaymentType    SchemePaymentType    `json:"scheme_payment_type"      bson:"scheme_payment_type"`
+	BeneficiaryParty     interface{}          `json:"beneficiary_party"        bson:"beneficiary_party"`
+	DebtorParty          interface{}          `json:"debtor_party"             bson:"debtor_party"`
+	SponsorParty         interface{}          `json:"sponsor_party"            bson:"sponsor_party"`
 }
 
 type ChangersInformation struct {
-	BearerCode              string    `json:"bearer_code"               bson:"bearer_code"`
-	SenderCharges           []Charges `json:"sender_charges"            bson:"sender_charges"`
-	ReceiverChargesAmount   float64   `json:"receiver_charges_amount"   bson:"receiver_charges_amount"`
-	ReceiverChargesCurrency Currency  `json:"receiver_charges_currency" bson:"receiver_charges_currency"`
+	BearerCode              string    `json:"bearer_code"                    bson:"bearer_code"`
+	SenderCharges           []Charges `json:"sender_charges"                 bson:"sender_charges"`
+	ReceiverChargesAmount   float64   `json:"receiver_charges_amount,string" bson:"receiver_charges_amount"`
+	ReceiverChargesCurrency Currency  `json:"receiver_charges_currency"      bson:"receiver_charges_currency"`
 }
 type Charges struct {
-	Amount   float32  `json:"amount"   bson:"amount"`
-	Currency Currency `json:"currency" bson:"currency"`
+	Amount   float32  `json:"amount,string" bson:"amount"`
+	Currency Currency `json:"currency"      bson:"currency"`
 }
 
 type Party struct {
