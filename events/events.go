@@ -22,5 +22,8 @@ const (
 	DeletePaymentEvent EventType = "payment:delete"
 
 	FetchPaymentEvent EventType = "payment:fetch"
-	ListPaymentEvent EventType = "payment:list"
+	ListPaymentEvent  EventType = "payment:list"
+
+	PaymentFoundEvent    EventType = "payment:found"
+	PaymentNotFoundEvent EventType = "payment:notfound"
 )
