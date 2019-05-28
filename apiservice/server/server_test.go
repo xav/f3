@@ -212,14 +212,13 @@ func (f *APICreatePaymentFixture) TestCreatePayment() {
     }
   }
 }`
-	req := httptest.NewRequest("POST", "/", strings.NewReader(input))
+	req := httptest.NewRequest("POST", "/v1", strings.NewReader(input))
 
 	f.nats.
 		On("Publish", string(events.CreatePayment), mock.Anything).
 		Return(nil)
 
-	handler := http.HandlerFunc(f.server.CreatePayment)
-	handler.ServeHTTP(f.rr, req)
+	f.server.Router.ServeHTTP(f.rr, req)
 	f.AssertEqual(http.StatusAccepted, f.rr.Code)
 }
 
@@ -290,10 +289,9 @@ func (f *APICreatePaymentFixture) TestCreatePayment_BadInput() {
     }
   }
 }`
-	req := httptest.NewRequest("POST", "/", strings.NewReader(input))
+	req := httptest.NewRequest("POST", "/v1", strings.NewReader(input))
 
-	handler := http.HandlerFunc(f.server.CreatePayment)
-	handler.ServeHTTP(f.rr, req)
+	f.server.Router.ServeHTTP(f.rr, req)
 	f.AssertEqual(http.StatusBadRequest, f.rr.Code)
 }
 
@@ -304,10 +302,9 @@ func (f *APICreatePaymentFixture) TestCreatePayment_MissingAttributes() {
   "version": 0,
   "organisation_id": "743d5b63-8e6f-432e-a8fa-c5d8d2ee5fcb"
 }`
-	req := httptest.NewRequest("POST", "/", strings.NewReader(input))
+	req := httptest.NewRequest("POST", "/v1", strings.NewReader(input))
 
-	handler := http.HandlerFunc(f.server.CreatePayment)
-	handler.ServeHTTP(f.rr, req)
+	f.server.Router.ServeHTTP(f.rr, req)
 	f.AssertEqual(http.StatusBadRequest, f.rr.Code)
 }
 
@@ -377,10 +374,9 @@ func (f *APICreatePaymentFixture) TestCreatePayment_MissingPaymentId() {
     }
   }
 }`
-	req := httptest.NewRequest("POST", "/", strings.NewReader(input))
+	req := httptest.NewRequest("POST", "/v1", strings.NewReader(input))
 
-	handler := http.HandlerFunc(f.server.CreatePayment)
-	handler.ServeHTTP(f.rr, req)
+	f.server.Router.ServeHTTP(f.rr, req)
 	f.AssertEqual(http.StatusBadRequest, f.rr.Code)
 }
 
@@ -451,14 +447,13 @@ func (f *APICreatePaymentFixture) TestCreatePayment_QueueError() {
     }
   }
 }`
-	req := httptest.NewRequest("POST", "/", strings.NewReader(input))
+	req := httptest.NewRequest("POST", "/v1", strings.NewReader(input))
 
 	f.nats.
 		On("Publish", string(events.CreatePayment), mock.Anything).
 		Return(errors.New("queue error"))
 
-	handler := http.HandlerFunc(f.server.CreatePayment)
-	handler.ServeHTTP(f.rr, req)
+	f.server.Router.ServeHTTP(f.rr, req)
 	f.AssertEqual(http.StatusInternalServerError, f.rr.Code)
 }
 
@@ -556,14 +551,13 @@ func (f *APIUpdatePaymentFixture) TestUpdatePayment() {
     }
   }
 }`
-	req := httptest.NewRequest("PUT", "/", strings.NewReader(input))
+	req := httptest.NewRequest("PUT", "/v1", strings.NewReader(input))
 
 	f.nats.
 		On("Publish", string(events.UpdatePayment), mock.Anything).
 		Return(nil)
 
-	handler := http.HandlerFunc(f.server.UpdatePayment)
-	handler.ServeHTTP(f.rr, req)
+	f.server.Router.ServeHTTP(f.rr, req)
 	f.AssertEqual(http.StatusAccepted, f.rr.Code)
 }
 
@@ -634,10 +628,9 @@ func (f *APIUpdatePaymentFixture) TestUpdatePayment_BadInput() {
     }
   }
 }`
-	req := httptest.NewRequest("PUT", "/", strings.NewReader(input))
+	req := httptest.NewRequest("PUT", "/v1", strings.NewReader(input))
 
-	handler := http.HandlerFunc(f.server.UpdatePayment)
-	handler.ServeHTTP(f.rr, req)
+	f.server.Router.ServeHTTP(f.rr, req)
 	f.AssertEqual(http.StatusBadRequest, f.rr.Code)
 }
 
@@ -648,14 +641,13 @@ func (f *APIUpdatePaymentFixture) TestUpdatePayment_MissingAttributes() {
   "version": 0,
   "organisation_id": "743d5b63-8e6f-432e-a8fa-c5d8d2ee5fcb"
 }`
-	req := httptest.NewRequest("PUT", "/", strings.NewReader(input))
+	req := httptest.NewRequest("PUT", "/v1", strings.NewReader(input))
 
 	f.nats.
 		On("Publish", "payment:create", mock.Anything).
 		Return(nil)
 
-	handler := http.HandlerFunc(f.server.UpdatePayment)
-	handler.ServeHTTP(f.rr, req)
+	f.server.Router.ServeHTTP(f.rr, req)
 	f.AssertEqual(http.StatusBadRequest, f.rr.Code)
 }
 
@@ -725,14 +717,13 @@ func (f *APIUpdatePaymentFixture) TestUpdatePayment_MissingPaymentId() {
     }
   }
 }`
-	req := httptest.NewRequest("PUT", "/", strings.NewReader(input))
+	req := httptest.NewRequest("PUT", "/v1", strings.NewReader(input))
 
 	f.nats.
 		On("Publish", "payment:create", mock.Anything).
 		Return(nil)
 
-	handler := http.HandlerFunc(f.server.UpdatePayment)
-	handler.ServeHTTP(f.rr, req)
+	f.server.Router.ServeHTTP(f.rr, req)
 	f.AssertEqual(http.StatusBadRequest, f.rr.Code)
 }
 
@@ -803,13 +794,12 @@ func (f *APIUpdatePaymentFixture) TestUpdatePayment_QueueError() {
     }
   }
 }`
-	req := httptest.NewRequest("PUT", "/", strings.NewReader(input))
+	req := httptest.NewRequest("PUT", "/v1", strings.NewReader(input))
 
 	f.nats.
 		On("Publish", string(events.UpdatePayment), mock.Anything).
 		Return(errors.New("queue error"))
 
-	handler := http.HandlerFunc(f.server.UpdatePayment)
-	handler.ServeHTTP(f.rr, req)
+	f.server.Router.ServeHTTP(f.rr, req)
 	f.AssertEqual(http.StatusInternalServerError, f.rr.Code)
 }

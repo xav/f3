@@ -21,7 +21,10 @@ import (
 )
 
 type Payment struct {
+	Type           ResourceType       `json:"type"            bson:"type"`
 	OrganisationID uuid.UUID          `json:"organisation_id" bson:"organisation_id"`
+	ID             uuid.UUID          `json:"id"              bson:"id"`
+	Version        int                `json:"version"         bson:"version"`
 	Attributes     *PaymentAttributes `json:"attributes"      bson:"attributes"`
 }
 
@@ -57,16 +60,16 @@ type PaymentAttributes struct {
 	NumericReference     uint64               `json:"numeric_reference,string" bson:"numeric_reference"`
 	Reference            string               `json:"reference"                bson:"reference"`
 	EndToEndReference    string               `json:"end_to_end_reference"     bson:"end_to_end_reference"`
-	ChargesInformation   ChangersInformation  `json:"charges_information"      bson:"charges_information"`
-	Exchange             interface{}          `json:"fx"                       bson:"fx"`
+	ChargesInformation   ChargesInformation   `json:"charges_information"      bson:"charges_information"`
+	Exchange             Exchange             `json:"fx"                       bson:"fx"`
 	SchemePaymentSubType SchemePaymentSubType `json:"scheme_payment_sub_type"  bson:"scheme_payment_sub_type"`
 	SchemePaymentType    SchemePaymentType    `json:"scheme_payment_type"      bson:"scheme_payment_type"`
-	BeneficiaryParty     interface{}          `json:"beneficiary_party"        bson:"beneficiary_party"`
-	DebtorParty          interface{}          `json:"debtor_party"             bson:"debtor_party"`
-	SponsorParty         interface{}          `json:"sponsor_party"            bson:"sponsor_party"`
+	BeneficiaryParty     Party                `json:"beneficiary_party"        bson:"beneficiary_party"`
+	DebtorParty          Party                `json:"debtor_party"             bson:"debtor_party"`
+	SponsorParty         Party                `json:"sponsor_party"            bson:"sponsor_party"`
 }
 
-type ChangersInformation struct {
+type ChargesInformation struct {
 	BearerCode              string    `json:"bearer_code"                    bson:"bearer_code"`
 	SenderCharges           []Charges `json:"sender_charges"                 bson:"sender_charges"`
 	ReceiverChargesAmount   float64   `json:"receiver_charges_amount,string" bson:"receiver_charges_amount"`
@@ -86,4 +89,11 @@ type Party struct {
 	AccountName       string      `json:"account_name,omitempty"        bson:"account_name,omitempty"`
 	AccountNumberCode string      `json:"account_number_code,omitempty" bson:"account_number_code,omitempty"`
 	AccountType       AccountType `json:"account_type,omitempty"        bson:"account_type,omitempty"`
+}
+
+type Exchange struct {
+	ContractReference string  `json:"contract_reference"     bson:"contract_reference"`
+	ExchangeRate      float64 `json:"exchange_rate,string"   bson:"exchange_rate"`
+	OriginalAmount    float64 `json:"original_amount,string" bson:"original_amount"`
+	OriginalCurrency  string  `json:"original_currency"      bson:"original_currency"`
 }
