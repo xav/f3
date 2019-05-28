@@ -18,12 +18,13 @@ import (
 	"os"
 
 	"github.com/apex/log"
-	"github.com/apex/log/handlers/cli"
+	"github.com/apex/log/handlers/text"
 
 	"github.com/xav/f3/paymentprocessingservice/command"
 )
 
 func main() {
-	log.SetHandler(cli.New(os.Stdout))
+	log.SetHandler(text.New(os.Stdout))
+	log.SetLevel(log.DebugLevel)
 	command.Execute()
 }
