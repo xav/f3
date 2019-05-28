@@ -29,6 +29,7 @@ import (
 	"github.com/go-chi/chi/middleware"
 	"github.com/go-chi/render"
 	"github.com/go-chi/valve"
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/xav/f3/events"
 	"gopkg.in/mgo.v2/bson"
@@ -160,7 +161,6 @@ func (s *Server) ListPayments(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) CreatePayment(w http.ResponseWriter, r *http.Request) {
 	payment := Payment{}
-
 	if err := json.NewDecoder(r.Body).Decode(&payment); err != nil {
 		log.WithError(err).Warnf("invalid request: '%v'", r.Body)
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -189,7 +189,52 @@ func (s *Server) CreatePayment(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) FetchPayment(w http.ResponseWriter, r *http.Request) {
-	render.DefaultResponder(w, r, "FetchPayment")
+	oid, err := uuid.Parse(chi.URLParam(r, organisationURLParam))
+	if err != nil {
+		log.WithError(err).Warnf("invalid organization id: '%v'", chi.URLParam(r, organisationURLParam))
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	pid, err := uuid.Parse(chi.URLParam(r, paymentURLParam))
+	if err != nil {
+		log.WithError(err).Warnf("invalid resource id: '%v'", chi.URLParam(r, organisationURLParam))
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	data, err := bson.Marshal(ResourceLocator{
+		OrganisationID: oid,
+		ID:             pid,
+	})
+	if err != nil {
+		log.WithError(err).Error("failed to marshal payment resource locator")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	msg, err := s.Nats.Request(string(events.FetchPayment), data, 10*time.Millisecond)
+	if err != nil {
+		log.WithError(err).Error("fetch request event failed")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	switch msg.Subject {
+	case string(events.PaymentFound):
+		payment := Payment{}
+		if err := bson.Unmarshal(msg.Data, &payment); err != nil {
+			log.WithError(err).Error("failed to unmarshal payment data")
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		render.DefaultResponder(w, r, payment)
+	case string(events.PaymentNotFound):
+		log.Warnf("payment '%v/%v' was not found", oid.String(), pid.String())
+		http.Error(w, fmt.Sprintf("payment '%v/%v' was not found", oid.String(), pid.String()), http.StatusNotFound)
+	default:
+		log.Errorf("unrecognised response to fetch request: '%v'", msg.Subject)
+		http.Error(w, fmt.Sprintf("unrecognised response to fetch request: '%v'", msg.Subject), http.StatusInternalServerError)
+	}
 }
 
 func (s *Server) UpdatePayment(w http.ResponseWriter, r *http.Request) {

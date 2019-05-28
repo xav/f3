@@ -20,6 +20,17 @@ import (
 	"github.com/pkg/errors"
 )
 
+type ResourceType string
+
+const (
+	PaymentResource ResourceType = "Payment"
+)
+
+type ResourceLocator struct {
+	OrganisationID uuid.UUID `json:"organisation_id" bson:"organisation_id"`
+	ID             uuid.UUID `json:"id"              bson:"id"`
+}
+
 type Payment struct {
 	Type           ResourceType       `json:"type"            bson:"type"`
 	OrganisationID uuid.UUID          `json:"organisation_id" bson:"organisation_id"`
