@@ -935,87 +935,6 @@ func (f *APIFetchPaymentFixture) TestFetchPayment_MissingOrgID() {
 	}
 	req := httptest.NewRequest("GET", fmt.Sprintf("/v1//%v", locator.ID), nil)
 
-	//noinspection SpellCheckingInspection
-	data, err := bson.Marshal(Payment{
-		Type:           "Payment",
-		OrganisationID: uuid.New(),
-		ID:             uuid.New(),
-		Version:        0,
-		Attributes: &PaymentAttributes{
-			PaymentID: "123456789012345678",
-			Amount:    100.21,
-			Currency:  "GBP",
-			Purpose:   "Paying for goods/services",
-			Scheme:    "FPS",
-			Type:      "Credit",
-			ProcessingDate: civil.Date{
-				Year:  2017,
-				Month: 1,
-				Day:   18,
-			},
-			NumericReference:  1002001,
-			Reference:         "Payment for Em's piano lessons",
-			EndToEndReference: "Wil piano Jan",
-			ChargesInformation: ChargesInformation{
-				BearerCode: "SHAR",
-				SenderCharges: []Charges{
-					{
-						Amount:   5.00,
-						Currency: "GBP",
-					}, {
-						Amount:   10.00,
-						Currency: "USD",
-					},
-				},
-				ReceiverChargesAmount:   1.00,
-				ReceiverChargesCurrency: "USD",
-			},
-			Exchange: Exchange{
-				ContractReference: "FX123",
-				ExchangeRate:      2.00000,
-				OriginalAmount:    200.42,
-				OriginalCurrency:  "USD",
-			},
-			SchemePaymentSubType: "InternetBanking",
-			SchemePaymentType:    "ImmediatePayment",
-			BeneficiaryParty: Party{
-				AccountNumber:     "W Owens",
-				BankId:            "403000",
-				BankIdCode:        "GBDSC",
-				Name:              "Wilfred Jeremiah Owens",
-				Address:           "1 The Beneficiary Localtown SE2",
-				AccountName:       "W Owens",
-				AccountNumberCode: "BBAN",
-				AccountType:       0,
-			},
-			DebtorParty: Party{
-				AccountNumber:     "GB29XABC10161234567801",
-				BankId:            "203301",
-				BankIdCode:        "GBDSC",
-				Name:              "Emelia Jane Brown",
-				Address:           "10 Debtor Crescent Sourcetown NE1",
-				AccountName:       "EJ Brown Black",
-				AccountNumberCode: "IBAN",
-				AccountType:       0,
-			},
-			SponsorParty: Party{
-				AccountNumber: "56781234",
-				BankId:        "123123",
-				BankIdCode:    "GBDSC",
-			},
-		},
-	})
-	f.Assert(err == nil)
-
-	f.nats.
-		On("Request", string(events.FetchPayment), mock.Anything, mock.Anything).
-		Return(&nats.Msg{
-			Subject: string(events.PaymentFound),
-			Reply:   "",
-			Data:    data,
-			Sub:     nil,
-		}, nil)
-
 	f.server.Router.ServeHTTP(f.rr, req)
 	f.AssertEqual(http.StatusNotFound, f.rr.Code)
 }
@@ -1027,86 +946,16 @@ func (f *APIFetchPaymentFixture) TestFetchPayment_InvalidOrgID() {
 	}
 	req := httptest.NewRequest("GET", fmt.Sprintf("/v1/not-uuid/%v", locator.ID), nil)
 
-	//noinspection SpellCheckingInspection
-	data, err := bson.Marshal(Payment{
-		Type:           "Payment",
+	f.server.Router.ServeHTTP(f.rr, req)
+	f.AssertEqual(http.StatusNotFound, f.rr.Code)
+}
+
+func (f *APIFetchPaymentFixture) TestFetchPayment_InvalidID() {
+	locator := ResourceLocator{
 		OrganisationID: uuid.New(),
 		ID:             uuid.New(),
-		Version:        0,
-		Attributes: &PaymentAttributes{
-			PaymentID: "123456789012345678",
-			Amount:    100.21,
-			Currency:  "GBP",
-			Purpose:   "Paying for goods/services",
-			Scheme:    "FPS",
-			Type:      "Credit",
-			ProcessingDate: civil.Date{
-				Year:  2017,
-				Month: 1,
-				Day:   18,
-			},
-			NumericReference:  1002001,
-			Reference:         "Payment for Em's piano lessons",
-			EndToEndReference: "Wil piano Jan",
-			ChargesInformation: ChargesInformation{
-				BearerCode: "SHAR",
-				SenderCharges: []Charges{
-					{
-						Amount:   5.00,
-						Currency: "GBP",
-					}, {
-						Amount:   10.00,
-						Currency: "USD",
-					},
-				},
-				ReceiverChargesAmount:   1.00,
-				ReceiverChargesCurrency: "USD",
-			},
-			Exchange: Exchange{
-				ContractReference: "FX123",
-				ExchangeRate:      2.00000,
-				OriginalAmount:    200.42,
-				OriginalCurrency:  "USD",
-			},
-			SchemePaymentSubType: "InternetBanking",
-			SchemePaymentType:    "ImmediatePayment",
-			BeneficiaryParty: Party{
-				AccountNumber:     "W Owens",
-				BankId:            "403000",
-				BankIdCode:        "GBDSC",
-				Name:              "Wilfred Jeremiah Owens",
-				Address:           "1 The Beneficiary Localtown SE2",
-				AccountName:       "W Owens",
-				AccountNumberCode: "BBAN",
-				AccountType:       0,
-			},
-			DebtorParty: Party{
-				AccountNumber:     "GB29XABC10161234567801",
-				BankId:            "203301",
-				BankIdCode:        "GBDSC",
-				Name:              "Emelia Jane Brown",
-				Address:           "10 Debtor Crescent Sourcetown NE1",
-				AccountName:       "EJ Brown Black",
-				AccountNumberCode: "IBAN",
-				AccountType:       0,
-			},
-			SponsorParty: Party{
-				AccountNumber: "56781234",
-				BankId:        "123123",
-				BankIdCode:    "GBDSC",
-			},
-		},
-	})
-	f.Assert(err == nil)
-
-	f.nats.
-		On("Request", string(events.FetchPayment), mock.Anything, mock.Anything).
-		Return(&nats.Msg{
-			Subject: string(events.PaymentFound),
-			Reply:   "",
-			Data:    data,
-			Sub:     nil,
-		}, nil)
+	}
+	req := httptest.NewRequest("GET", fmt.Sprintf("/v1/%v/not-uuid", locator.OrganisationID), nil)
 
 	f.server.Router.ServeHTTP(f.rr, req)
 	f.AssertEqual(http.StatusNotFound, f.rr.Code)
@@ -1156,6 +1005,145 @@ func (f *APIFetchPaymentFixture) TestFetchPayment_UnrecognisedResponse() {
 
 	f.nats.
 		On("Request", string(events.FetchPayment), mock.Anything, mock.Anything).
+		Return(&nats.Msg{
+			Subject: "SomethingElse",
+			Reply:   "",
+			Data:    nil,
+			Sub:     nil,
+		}, nil)
+
+	f.server.Router.ServeHTTP(f.rr, req)
+	f.AssertEqual(http.StatusInternalServerError, f.rr.Code)
+}
+
+////////////////////////////////////////
+
+func TestAPIDeletePaymentFixture(t *testing.T) {
+	gunit.Run(new(APIDeletePaymentFixture), t)
+}
+
+type APIDeletePaymentFixture struct {
+	*gunit.Fixture
+	server *Server
+	nats   *mocks.NatsConn
+	rr     *httptest.ResponseRecorder
+}
+
+func (f *APIDeletePaymentFixture) Setup() {
+	f.nats = &mocks.NatsConn{}
+	s, err := NewServer(func(s *Server) error {
+		s.Nats = f.nats
+		return nil
+	})
+	if err != nil {
+		log.WithError(err).Fatal("error creating server")
+	}
+	f.server = s
+
+	f.rr = httptest.NewRecorder()
+}
+
+func (f *APIDeletePaymentFixture) TestDeletePayment() {
+	locator := ResourceLocator{
+		OrganisationID: uuid.New(),
+		ID:             uuid.New(),
+	}
+	req := httptest.NewRequest("DELETE", fmt.Sprintf("/v1/%v/%v", locator.OrganisationID, locator.ID), nil)
+
+	//noinspection SpellCheckingInspection
+	data, err := bson.Marshal(locator)
+	f.Assert(err == nil)
+
+	f.nats.
+		On("Request", string(events.DeletePayment), mock.Anything, mock.Anything).
+		Return(&nats.Msg{
+			Subject: string(events.PaymentFound),
+			Reply:   "",
+			Data:    data,
+			Sub:     nil,
+		}, nil)
+
+	f.server.Router.ServeHTTP(f.rr, req)
+	f.AssertEqual(http.StatusGone, f.rr.Code)
+}
+
+func (f *APIDeletePaymentFixture) TestDeletePayment_MissingOrgID() {
+	locator := ResourceLocator{
+		OrganisationID: uuid.New(),
+		ID:             uuid.New(),
+	}
+	req := httptest.NewRequest("DELETE", fmt.Sprintf("/v1//%v", locator.ID), nil)
+
+	f.server.Router.ServeHTTP(f.rr, req)
+	f.AssertEqual(http.StatusNotFound, f.rr.Code)
+}
+
+func (f *APIDeletePaymentFixture) TestDeletePayment_InvalidOrgID() {
+	locator := ResourceLocator{
+		OrganisationID: uuid.New(),
+		ID:             uuid.New(),
+	}
+	req := httptest.NewRequest("DELETE", fmt.Sprintf("/v1/not-uuid/%v", locator.ID), nil)
+
+	f.server.Router.ServeHTTP(f.rr, req)
+	f.AssertEqual(http.StatusNotFound, f.rr.Code)
+}
+
+func (f *APIDeletePaymentFixture) TestDeletePayment_InvalidID() {
+	locator := ResourceLocator{
+		OrganisationID: uuid.New(),
+		ID:             uuid.New(),
+	}
+	req := httptest.NewRequest("DELETE", fmt.Sprintf("/v1/%v/not-uuid", locator.OrganisationID), nil)
+
+	f.server.Router.ServeHTTP(f.rr, req)
+	f.AssertEqual(http.StatusNotFound, f.rr.Code)
+}
+
+func (f *APIDeletePaymentFixture) TestDeletePayment_QueueError() {
+	locator := ResourceLocator{
+		OrganisationID: uuid.New(),
+		ID:             uuid.New(),
+	}
+	req := httptest.NewRequest("DELETE", fmt.Sprintf("/v1/%v/%v", locator.OrganisationID, locator.ID), nil)
+
+	f.nats.
+		On("Request", string(events.DeletePayment), mock.Anything, mock.Anything).
+		Return(nil, errors.New("queue error"))
+
+	f.server.Router.ServeHTTP(f.rr, req)
+	f.AssertEqual(http.StatusInternalServerError, f.rr.Code)
+}
+
+func (f *APIDeletePaymentFixture) TestDeletePayment_NotFound() {
+	locator := ResourceLocator{
+		OrganisationID: uuid.New(),
+		ID:             uuid.New(),
+	}
+	req := httptest.NewRequest("DELETE", fmt.Sprintf("/v1/%v/%v", locator.OrganisationID, locator.ID), nil)
+
+	f.nats.
+		On("Request", string(events.DeletePayment), mock.Anything, mock.Anything).
+		Return(&nats.Msg{
+			Subject: string(events.PaymentNotFound),
+			Reply:   "",
+			Data:    nil,
+			Sub:     nil,
+		}, nil)
+
+	f.server.Router.ServeHTTP(f.rr, req)
+	f.AssertEqual(http.StatusNotFound, f.rr.Code)
+}
+
+func (f *APIDeletePaymentFixture) TestDeletePayment_UnrecognisedResponse() {
+	locator := ResourceLocator{
+		OrganisationID: uuid.New(),
+		ID:             uuid.New(),
+	}
+	req := httptest.NewRequest("DELETE", fmt.Sprintf("/v1/%v/%v", locator.OrganisationID, locator.ID), nil)
+
+	f.nats.
+		On("Request", string(events.DeletePayment), mock.Anything, mock.Anything).
 		Return(&nats.Msg{
 			Subject: "SomethingElse",
 			Reply:   "",

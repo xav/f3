@@ -20,6 +20,6 @@ require (
 	github.com/smartystreets/gunit v0.0.0-20190426220047-d9c9211acd48
 	github.com/spf13/cobra v0.0.4
 	github.com/stretchr/testify v1.3.0
-	github.com/xav/f3/events v0.0.0-20190528020015-bd2a4b8bcc2a
+	github.com/xav/f3/events v0.0.0-20190528021818-ddc1c013e5b7
 	gopkg.in/mgo.v2 v2.0.0-20180705113604-9856a29383ce
 )

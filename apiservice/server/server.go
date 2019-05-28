@@ -268,5 +268,51 @@ func (s *Server) UpdatePayment(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) DeletePayment(w http.ResponseWriter, r *http.Request) {
-	render.DefaultResponder(w, r, "DeletePayment")
+	oid, err := uuid.Parse(chi.URLParam(r, organisationURLParam))
+	if err != nil {
+		log.WithError(err).Warnf("invalid organization id: '%v'", chi.URLParam(r, organisationURLParam))
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	pid, err := uuid.Parse(chi.URLParam(r, paymentURLParam))
+	if err != nil {
+		log.WithError(err).Warnf("invalid resource id: '%v'", chi.URLParam(r, organisationURLParam))
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	data, err := bson.Marshal(ResourceLocator{
+		OrganisationID: oid,
+		ID:             pid,
+	})
+	if err != nil {
+		log.WithError(err).Error("failed to marshal resource resource locator")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	msg, err := s.Nats.Request(string(events.DeletePayment), data, 10*time.Millisecond)
+	if err != nil {
+		log.WithError(err).Error("fetch request event failed")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	switch msg.Subject {
+	case string(events.PaymentFound):
+		resource := ResourceLocator{}
+		if err := bson.Unmarshal(msg.Data, &resource); err != nil {
+			log.WithError(err).Error("failed to unmarshal resource data")
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		render.Status(r, http.StatusGone)
+		render.DefaultResponder(w, r, resource)
+	case string(events.PaymentNotFound):
+		log.Warnf("resource '%v/%v' was not found", oid.String(), pid.String())
+		http.Error(w, fmt.Sprintf("resource '%v/%v' was not found", oid.String(), pid.String()), http.StatusNotFound)
+	default:
+		log.Errorf("unrecognised response to fetch request: '%v'", msg.Subject)
+		http.Error(w, fmt.Sprintf("unrecognised response to fetch request: '%v'", msg.Subject), http.StatusInternalServerError)
+	}
 }
