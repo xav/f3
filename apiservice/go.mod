@@ -11,15 +11,11 @@ require (
 	github.com/go-chi/valve v0.0.0-20170920024740-9e45288364f4
 	github.com/google/uuid v1.1.1
 	github.com/mattn/go-colorable v0.1.2 // indirect
-	github.com/nats-io/gnatsd v1.4.1 // indirect
-	github.com/nats-io/go-nats v1.7.2 // indirect
 	github.com/nats-io/nats.go v1.7.2
-	github.com/nats-io/nkeys v0.0.2 // indirect
-	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/pkg/errors v0.8.1
 	github.com/smartystreets/gunit v0.0.0-20190426220047-d9c9211acd48
 	github.com/spf13/cobra v0.0.4
 	github.com/stretchr/testify v1.3.0
-	github.com/xav/f3/events v0.0.0-20190528021818-ddc1c013e5b7
+	github.com/xav/f3/events v0.0.0-20190528102010-5e5376f4a413
 	gopkg.in/mgo.v2 v2.0.0-20180705113604-9856a29383ce
 )

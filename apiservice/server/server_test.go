@@ -31,6 +31,8 @@ import (
 	"github.com/xav/f3/events"
 	"gopkg.in/mgo.v2/bson"
 
+	emocks "github.com/xav/f3/events/mocks"
+
 	"github.com/xav/f3/apiservice/server/mocks"
 )
 
@@ -63,7 +65,7 @@ func (f *RoutesFixture) Setup() {
 	registerCall("DeletePayment")
 
 	s, err := NewServer(func(s *Server) error {
-		s.Nats = &mocks.NatsConn{}
+		s.Nats = &emocks.NatsConn{}
 		s.routesHandler = routesHandler
 		return nil
 	})
@@ -132,12 +134,12 @@ func TestAPICreatePaymentFixture(t *testing.T) {
 type APICreatePaymentFixture struct {
 	*gunit.Fixture
 	server *Server
-	nats   *mocks.NatsConn
+	nats   *emocks.NatsConn
 	rr     *httptest.ResponseRecorder
 }
 
 func (f *APICreatePaymentFixture) Setup() {
-	f.nats = &mocks.NatsConn{}
+	f.nats = &emocks.NatsConn{}
 	s, err := NewServer(func(s *Server) error {
 		s.Nats = f.nats
 		return nil
@@ -471,12 +473,12 @@ func TestAPIUpdatePaymentFixture(t *testing.T) {
 type APIUpdatePaymentFixture struct {
 	*gunit.Fixture
 	server *Server
-	nats   *mocks.NatsConn
+	nats   *emocks.NatsConn
 	rr     *httptest.ResponseRecorder
 }
 
 func (f *APIUpdatePaymentFixture) Setup() {
-	f.nats = &mocks.NatsConn{}
+	f.nats = &emocks.NatsConn{}
 	s, err := NewServer(func(s *Server) error {
 		s.Nats = f.nats
 		return nil
@@ -818,12 +820,12 @@ func TestAPIFetchPaymentFixture(t *testing.T) {
 type APIFetchPaymentFixture struct {
 	*gunit.Fixture
 	server *Server
-	nats   *mocks.NatsConn
+	nats   *emocks.NatsConn
 	rr     *httptest.ResponseRecorder
 }
 
 func (f *APIFetchPaymentFixture) Setup() {
-	f.nats = &mocks.NatsConn{}
+	f.nats = &emocks.NatsConn{}
 	s, err := NewServer(func(s *Server) error {
 		s.Nats = f.nats
 		return nil
@@ -1025,12 +1027,12 @@ func TestAPIDeletePaymentFixture(t *testing.T) {
 type APIDeletePaymentFixture struct {
 	*gunit.Fixture
 	server *Server
-	nats   *mocks.NatsConn
+	nats   *emocks.NatsConn
 	rr     *httptest.ResponseRecorder
 }
 
 func (f *APIDeletePaymentFixture) Setup() {
-	f.nats = &mocks.NatsConn{}
+	f.nats = &emocks.NatsConn{}
 	s, err := NewServer(func(s *Server) error {
 		s.Nats = f.nats
 		return nil

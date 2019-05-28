@@ -38,7 +38,7 @@ import (
 type Server struct {
 	Router        *chi.Mux
 	Port          int
-	Nats          NatsConn
+	Nats          events.NatsConn
 	routesHandler RoutesHandler
 	ctx           context.Context
 }
