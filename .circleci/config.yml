@@ -2,12 +2,13 @@ version: 2
 
 workflows:
   version: 2
-  build_api:
+  build_test:
     jobs:
-      - build_api
+      - build_f3api
+      - build_f3processing
 
 jobs:
-  build_api:
+  build_f3api:
     docker:
       - image: circleci/golang:1.12 #
 
@@ -36,6 +37,44 @@ jobs:
           # Store the results of our tests in the /tmp/artifacts directory
           command: |
             go test ./apiservice/...
+
+      # - run: make # pull and build dependencies for the project
+
+      # Store cache in the /go/pkg directory
+      - save_cache:
+          key: v1-pkg-cache
+          paths:
+            - "/go/pkg"
+
+  build_f3processing:
+    docker:
+      - image: circleci/golang:1.12 #
+
+    environment: # environment variables for the build itself
+      TEST_RESULTS: /tmp/artifacts # path to where test results will be saved
+
+    steps: # steps that comprise the `build` job
+      # check out source code to working directory
+      - checkout
+
+      # create the test results directory
+      - run:
+          name: "Create a temp directory for artifacts"
+          command: |
+            mkdir -p $TEST_RESULTS
+
+      # restores saved cache if no changes are detected since last run
+      - restore_cache:
+          keys:
+            - v1-pkg-cache
+
+      - run: go get -v -t -d ./paymentprocessingservice/...
+
+      - run:
+          name: Run unit tests
+          # Store the results of our tests in the /tmp/artifacts directory
+          command: |
+            go test ./paymentprocessingservice/...
 
       # - run: make # pull and build dependencies for the project
 
