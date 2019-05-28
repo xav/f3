@@ -25,6 +25,5 @@ const (
 	ListPayment  EventType = "payment:list"
 
 	PaymentFound    EventType = "payment:found"
-	PaymentDeleted  EventType = "payment:deleted"
 	PaymentNotFound EventType = "payment:notfound"
 )
