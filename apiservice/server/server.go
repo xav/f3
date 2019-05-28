@@ -116,7 +116,7 @@ func (s *Server) Start() error {
 		}
 	}()
 
-	log.Infof("listening on :%v ...", s.Port)
+	log.Infof("f3 payment api listening on :%v ...", s.Port)
 	log.Infof("%v", srv.ListenAndServe())
 
 	return nil
@@ -191,7 +191,7 @@ func (s *Server) CreatePayment(w http.ResponseWriter, r *http.Request) {
 func (s *Server) FetchPayment(w http.ResponseWriter, r *http.Request) {
 	oid, err := uuid.Parse(chi.URLParam(r, organisationURLParam))
 	if err != nil {
-		log.WithError(err).Warnf("invalid organization id: '%v'", chi.URLParam(r, organisationURLParam))
+		log.WithError(err).Warnf("invalid organisation id: '%v'", chi.URLParam(r, organisationURLParam))
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
@@ -270,7 +270,7 @@ func (s *Server) UpdatePayment(w http.ResponseWriter, r *http.Request) {
 func (s *Server) DeletePayment(w http.ResponseWriter, r *http.Request) {
 	oid, err := uuid.Parse(chi.URLParam(r, organisationURLParam))
 	if err != nil {
-		log.WithError(err).Warnf("invalid organization id: '%v'", chi.URLParam(r, organisationURLParam))
+		log.WithError(err).Warnf("invalid organisation id: '%v'", chi.URLParam(r, organisationURLParam))
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
