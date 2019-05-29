@@ -27,32 +27,18 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/pkg/errors"
 	"github.com/xav/f3/apiservice/server"
-	"github.com/xav/f3/events"
+	"github.com/xav/f3/f3nats"
+	"github.com/xav/f3/models"
 	"gopkg.in/mgo.v2/bson"
 )
 
 type Service struct {
 	ClientID      string
-	Nats          events.NatsConn
+	Nats          f3nats.NatsConn
 	Redis         redis.Conn
 	subscriptions []*nats.Subscription
 	PreRun        []func(*Service) error
 }
-
-type StoreEvent struct {
-	EventType events.EventType `json:"event_type" bson:"event_type"`
-	Version   int64            `json:"version"    bson:"version"`
-	CreatedAt int64            `json:"created_at" bson:"created_at"`
-	Resource  interface{}      `json:"resource"   bson:"resource"`
-}
-
-const paymentResource = "payment"
-
-const (
-	versionKeyTemplate   = "v/%v/%v/%v"
-	eventKeyTemplate     = "e/%v/%v/%v/%v"
-	eventKeyScanTemplate = "e/%v/%v/%v/*"
-)
 
 type MsgHandler func(msg *nats.Msg) error
 
@@ -64,9 +50,9 @@ func (s *Service) Start() error {
 	}
 
 	s.subscriptions = make([]*nats.Subscription, 0, 3)
-	s.subscribe(events.CreatePayment, s.HandleCreatePayment)
-	s.subscribe(events.UpdatePayment, s.HandleUpdatePayment)
-	s.subscribe(events.DeletePayment, s.HandleDeletePayment)
+	s.subscribe(models.CreatePaymentEvent, s.HandleCreatePayment)
+	s.subscribe(models.UpdatePaymentEvent, s.HandleUpdatePayment)
+	s.subscribe(models.DeletePaymentEvent, s.HandleDeletePayment)
 
 	// Wait for a SIGINT (e.g. triggered by user with CTRL-C)
 	// Run cleanup when signal is received
@@ -108,7 +94,7 @@ func (s *Service) HandleCreatePayment(msg *nats.Msg) error {
 	}
 
 	// Check if the payment is already present
-	_, evts, err := s.scanResources(paymentResource, payment.OrganisationID, payment.ID, 0)
+	_, evts, err := s.scanResources(models.PaymentResource, payment.OrganisationID, payment.ID, 0)
 	if err != nil {
 		return errors.Wrap(err, "failed to check existing payments")
 	}
@@ -117,15 +103,15 @@ func (s *Service) HandleCreatePayment(msg *nats.Msg) error {
 	}
 
 	// Create the version index
-	versionKey := fmt.Sprintf(versionKeyTemplate, paymentResource, payment.OrganisationID, payment.ID)
+	versionKey := fmt.Sprintf(models.VersionKeyTemplate, models.PaymentResource, payment.OrganisationID, payment.ID)
 	version, err := s.Redis.Do("INCR", versionKey)
 	if err != nil {
 		return errors.Wrap(err, "failed to increment aggregate version")
 	}
 
 	// Save the event to the store
-	bytes, err := json.Marshal(StoreEvent{
-		EventType: events.CreatePayment,
+	bytes, err := json.Marshal(models.StoreEvent{
+		EventType: models.CreatePaymentEvent,
 		Version:   version.(int64),
 		CreatedAt: time.Now().Unix(),
 		Resource:  &payment,
@@ -133,7 +119,7 @@ func (s *Service) HandleCreatePayment(msg *nats.Msg) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal event data")
 	}
-	eventKey := fmt.Sprintf(eventKeyTemplate, paymentResource, payment.OrganisationID, payment.ID, version)
+	eventKey := fmt.Sprintf(models.EventKeyTemplate, models.PaymentResource, payment.OrganisationID, payment.ID, version)
 	reply, err := s.Redis.Do("SET", eventKey, bytes)
 	if err != nil {
 		return errors.Wrap(err, "failed to store payment event")
@@ -158,7 +144,7 @@ func (s *Service) HandleUpdatePayment(msg *nats.Msg) error {
 	}
 
 	// Check if the payment is already present
-	_, evts, err := s.scanResources(paymentResource, payment.OrganisationID, payment.ID, 0)
+	_, evts, err := s.scanResources(models.PaymentResource, payment.OrganisationID, payment.ID, 0)
 	if err != nil {
 		return errors.Wrap(err, "failed to check existing payments")
 	}
@@ -167,15 +153,15 @@ func (s *Service) HandleUpdatePayment(msg *nats.Msg) error {
 	}
 
 	// Increment the version index
-	versionKey := fmt.Sprintf(versionKeyTemplate, paymentResource, payment.OrganisationID, payment.ID)
+	versionKey := fmt.Sprintf(models.VersionKeyTemplate, models.PaymentResource, payment.OrganisationID, payment.ID)
 	version, err := s.Redis.Do("INCR", versionKey)
 	if err != nil {
 		return errors.Wrap(err, "failed to increment aggregate version")
 	}
 
 	// Save the event to the store
-	bytes, err := json.Marshal(StoreEvent{
-		EventType: events.UpdatePayment,
+	bytes, err := json.Marshal(models.StoreEvent{
+		EventType: models.UpdatePaymentEvent,
 		Version:   version.(int64),
 		CreatedAt: time.Now().Unix(),
 		Resource:  &payment,
@@ -183,7 +169,7 @@ func (s *Service) HandleUpdatePayment(msg *nats.Msg) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal event data")
 	}
-	eventKey := fmt.Sprintf(eventKeyTemplate, paymentResource, payment.OrganisationID, payment.ID, version)
+	eventKey := fmt.Sprintf(models.EventKeyTemplate, models.PaymentResource, payment.OrganisationID, payment.ID, version)
 	reply, err := s.Redis.Do("SET", eventKey, bytes)
 	if err != nil {
 		return errors.Wrap(err, "failed to store payment event")
@@ -208,7 +194,7 @@ func (s *Service) HandleDeletePayment(msg *nats.Msg) error {
 	}
 
 	// Check if the payment is already present
-	_, evts, err := s.scanResources(paymentResource, locator.OrganisationID, locator.ID, 0)
+	_, evts, err := s.scanResources(models.PaymentResource, locator.OrganisationID, locator.ID, 0)
 	if err != nil {
 		return errors.Wrap(err, "failed to check existing payments")
 	}
@@ -217,15 +203,15 @@ func (s *Service) HandleDeletePayment(msg *nats.Msg) error {
 	}
 
 	// Increment the version index
-	versionKey := fmt.Sprintf(versionKeyTemplate, paymentResource, locator.OrganisationID, locator.ID)
+	versionKey := fmt.Sprintf(models.VersionKeyTemplate, models.PaymentResource, locator.OrganisationID, locator.ID)
 	version, err := s.Redis.Do("INCR", versionKey)
 	if err != nil {
 		return errors.Wrap(err, "failed to increment aggregate version")
 	}
 
 	// Save the event to the store
-	bytes, err := json.Marshal(StoreEvent{
-		EventType: events.DeletePayment,
+	bytes, err := json.Marshal(models.StoreEvent{
+		EventType: models.DeletePaymentEvent,
 		Version:   version.(int64),
 		CreatedAt: time.Now().Unix(),
 		Resource:  &locator,
@@ -233,7 +219,7 @@ func (s *Service) HandleDeletePayment(msg *nats.Msg) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal event data")
 	}
-	eventKey := fmt.Sprintf(eventKeyTemplate, paymentResource, locator.OrganisationID, locator.ID, version)
+	eventKey := fmt.Sprintf(models.EventKeyTemplate, models.PaymentResource, locator.OrganisationID, locator.ID, version)
 	reply, err := s.Redis.Do("SET", eventKey, bytes)
 	if err != nil {
 		return errors.Wrap(err, "failed to store payment event")
@@ -250,10 +236,10 @@ func (s *Service) HandleDeletePayment(msg *nats.Msg) error {
 	return nil
 }
 
-func (s *Service) scanResources(resourceType string, organizationID uuid.UUID, resourceID uuid.UUID, cursor uint8) (uint8, [][]byte, error) {
+func (s *Service) scanResources(resourceType models.ResourceType, organizationID uuid.UUID, resourceID uuid.UUID, cursor uint8) (uint8, [][]byte, error) {
 	var (
 		items   [][]byte
-		scanKey = fmt.Sprintf(eventKeyScanTemplate, resourceType, organizationID, resourceID)
+		scanKey = fmt.Sprintf(models.EventKeyScanTemplate, resourceType, organizationID, resourceID)
 	)
 
 	existing, err := redis.Values(s.Redis.Do("SCAN", cursor, "MATCH", scanKey))
@@ -267,7 +253,7 @@ func (s *Service) scanResources(resourceType string, organizationID uuid.UUID, r
 	return cursor, items, nil
 }
 
-func (s *Service) subscribe(event events.EventType, handler MsgHandler) {
+func (s *Service) subscribe(event models.EventType, handler MsgHandler) {
 	subscription, err := s.Nats.Subscribe(string(event), func(msg *nats.Msg) {
 		if err := handler(msg); err != nil {
 			log.WithError(err).Error("event handler failed")

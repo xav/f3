@@ -24,8 +24,8 @@ import (
 	"github.com/smartystreets/gunit"
 	"github.com/stretchr/testify/mock"
 	"github.com/xav/f3/apiservice/server"
-	"github.com/xav/f3/events"
-	"github.com/xav/f3/events/mocks"
+	"github.com/xav/f3/f3nats/mocks"
+	"github.com/xav/f3/models"
 	"gopkg.in/mgo.v2/bson"
 )
 
@@ -51,7 +51,7 @@ func (f *CreatePaymentFixture) Setup() {
 
 func (f *CreatePaymentFixture) TestCreatePayment_InvalidPayload() {
 	msg := &nats.Msg{
-		Subject: string(events.CreatePayment),
+		Subject: string(models.CreatePaymentEvent),
 		Reply:   "",
 		Data:    []byte(("not_bson")),
 		Sub:     nil,
@@ -68,7 +68,7 @@ func (f *CreatePaymentFixture) TestCreatePayment_ScanError() {
 	data, err := bson.Marshal(server.Payment{})
 	f.Assert(err == nil)
 	msg := &nats.Msg{
-		Subject: string(events.CreatePayment),
+		Subject: string(models.CreatePaymentEvent),
 		Reply:   "",
 		Data:    data,
 		Sub:     nil,
@@ -89,14 +89,14 @@ func (f *CreatePaymentFixture) TestCreatePayment_AlreadyPresent() {
 	data, err := bson.Marshal(server.Payment{})
 	f.Assert(err == nil)
 	msg := &nats.Msg{
-		Subject: string(events.CreatePayment),
+		Subject: string(models.CreatePaymentEvent),
 		Reply:   "",
 		Data:    data,
 		Sub:     nil,
 	}
 
-	bytes, err := json.Marshal(StoreEvent{
-		EventType: events.UpdatePayment,
+	bytes, err := json.Marshal(models.StoreEvent{
+		EventType: models.UpdatePaymentEvent,
 		Version:   int64(1),
 		Resource:  &server.Payment{},
 	})
@@ -116,7 +116,7 @@ func (f *CreatePaymentFixture) TestCreatePayment_VersionError() {
 	data, err := bson.Marshal(server.Payment{})
 	f.Assert(err == nil)
 	msg := &nats.Msg{
-		Subject: string(events.CreatePayment),
+		Subject: string(models.CreatePaymentEvent),
 		Reply:   "",
 		Data:    data,
 		Sub:     nil,
@@ -141,7 +141,7 @@ func (f *CreatePaymentFixture) TestCreatePayment_SetError() {
 	data, err := bson.Marshal(server.Payment{})
 	f.Assert(err == nil)
 	msg := &nats.Msg{
-		Subject: string(events.CreatePayment),
+		Subject: string(models.CreatePaymentEvent),
 		Reply:   "",
 		Data:    data,
 		Sub:     nil,
@@ -170,7 +170,7 @@ func (f *CreatePaymentFixture) TestCreatePayment_NoReply() {
 	data, err := bson.Marshal(server.Payment{})
 	f.Assert(err == nil)
 	msg := &nats.Msg{
-		Subject: string(events.CreatePayment),
+		Subject: string(models.CreatePaymentEvent),
 		Reply:   "",
 		Data:    data,
 		Sub:     nil,
@@ -197,7 +197,7 @@ func (f *CreatePaymentFixture) TestCreatePayment_Reply() {
 	data, err := bson.Marshal(server.Payment{})
 	f.Assert(err == nil)
 	msg := &nats.Msg{
-		Subject: string(events.CreatePayment),
+		Subject: string(models.CreatePaymentEvent),
 		Reply:   "reply-inbox",
 		Data:    data,
 		Sub:     nil,
@@ -248,7 +248,7 @@ func (f *UpdatePaymentFixture) Setup() {
 
 func (f *UpdatePaymentFixture) TestUpdatePayment_InvalidPayload() {
 	msg := &nats.Msg{
-		Subject: string(events.UpdatePayment),
+		Subject: string(models.UpdatePaymentEvent),
 		Reply:   "",
 		Data:    []byte(("not_bson")),
 		Sub:     nil,
@@ -265,7 +265,7 @@ func (f *UpdatePaymentFixture) TestUpdatePayment_ScanError() {
 	data, err := bson.Marshal(server.Payment{})
 	f.Assert(err == nil)
 	msg := &nats.Msg{
-		Subject: string(events.UpdatePayment),
+		Subject: string(models.UpdatePaymentEvent),
 		Reply:   "",
 		Data:    data,
 		Sub:     nil,
@@ -286,7 +286,7 @@ func (f *UpdatePaymentFixture) TestUpdatePayment_NotPresent() {
 	data, err := bson.Marshal(server.Payment{})
 	f.Assert(err == nil)
 	msg := &nats.Msg{
-		Subject: string(events.UpdatePayment),
+		Subject: string(models.UpdatePaymentEvent),
 		Reply:   "",
 		Data:    data,
 		Sub:     nil,
@@ -307,14 +307,14 @@ func (f *UpdatePaymentFixture) TestUpdatePayment_VersionError() {
 	data, err := bson.Marshal(server.Payment{})
 	f.Assert(err == nil)
 	msg := &nats.Msg{
-		Subject: string(events.UpdatePayment),
+		Subject: string(models.UpdatePaymentEvent),
 		Reply:   "",
 		Data:    data,
 		Sub:     nil,
 	}
 
-	bytes, err := json.Marshal(StoreEvent{
-		EventType: events.UpdatePayment,
+	bytes, err := json.Marshal(models.StoreEvent{
+		EventType: models.UpdatePaymentEvent,
 		Version:   int64(1),
 		Resource:  &server.Payment{},
 	})
@@ -338,14 +338,14 @@ func (f *UpdatePaymentFixture) TestUpdatePayment_SetError() {
 	data, err := bson.Marshal(server.Payment{})
 	f.Assert(err == nil)
 	msg := &nats.Msg{
-		Subject: string(events.UpdatePayment),
+		Subject: string(models.UpdatePaymentEvent),
 		Reply:   "",
 		Data:    data,
 		Sub:     nil,
 	}
 
-	bytes, err := json.Marshal(StoreEvent{
-		EventType: events.UpdatePayment,
+	bytes, err := json.Marshal(models.StoreEvent{
+		EventType: models.UpdatePaymentEvent,
 		Version:   int64(1),
 		Resource:  &server.Payment{},
 	})
@@ -373,14 +373,14 @@ func (f *UpdatePaymentFixture) TestUpdatePayment_NoReply() {
 	data, err := bson.Marshal(server.Payment{})
 	f.Assert(err == nil)
 	msg := &nats.Msg{
-		Subject: string(events.UpdatePayment),
+		Subject: string(models.UpdatePaymentEvent),
 		Reply:   "",
 		Data:    data,
 		Sub:     nil,
 	}
 
-	bytes, err := json.Marshal(StoreEvent{
-		EventType: events.UpdatePayment,
+	bytes, err := json.Marshal(models.StoreEvent{
+		EventType: models.UpdatePaymentEvent,
 		Version:   int64(1),
 		Resource:  &server.Payment{},
 	})
@@ -406,14 +406,14 @@ func (f *UpdatePaymentFixture) TestUpdatePayment_Reply() {
 	data, err := bson.Marshal(server.Payment{})
 	f.Assert(err == nil)
 	msg := &nats.Msg{
-		Subject: string(events.UpdatePayment),
+		Subject: string(models.UpdatePaymentEvent),
 		Reply:   "reply-inbox",
 		Data:    data,
 		Sub:     nil,
 	}
 
-	bytes, err := json.Marshal(StoreEvent{
-		EventType: events.UpdatePayment,
+	bytes, err := json.Marshal(models.StoreEvent{
+		EventType: models.UpdatePaymentEvent,
 		Version:   int64(1),
 		Resource:  &server.Payment{},
 	})
@@ -463,7 +463,7 @@ func (f *DeletePaymentFixture) Setup() {
 
 func (f *DeletePaymentFixture) TestDeletePayment_InvalidPayload() {
 	msg := &nats.Msg{
-		Subject: string(events.DeletePayment),
+		Subject: string(models.DeletePaymentEvent),
 		Reply:   "",
 		Data:    []byte(("not_bson")),
 		Sub:     nil,
@@ -480,7 +480,7 @@ func (f *DeletePaymentFixture) TestDeletePayment_ScanError() {
 	data, err := bson.Marshal(server.ResourceLocator{})
 	f.Assert(err == nil)
 	msg := &nats.Msg{
-		Subject: string(events.DeletePayment),
+		Subject: string(models.DeletePaymentEvent),
 		Reply:   "",
 		Data:    data,
 		Sub:     nil,
@@ -501,7 +501,7 @@ func (f *DeletePaymentFixture) TestDeletePayment_NotPresent() {
 	data, err := bson.Marshal(server.ResourceLocator{})
 	f.Assert(err == nil)
 	msg := &nats.Msg{
-		Subject: string(events.DeletePayment),
+		Subject: string(models.DeletePaymentEvent),
 		Reply:   "",
 		Data:    data,
 		Sub:     nil,
@@ -522,14 +522,14 @@ func (f *DeletePaymentFixture) TestDeletePayment_VersionError() {
 	data, err := bson.Marshal(server.ResourceLocator{})
 	f.Assert(err == nil)
 	msg := &nats.Msg{
-		Subject: string(events.DeletePayment),
+		Subject: string(models.DeletePaymentEvent),
 		Reply:   "",
 		Data:    data,
 		Sub:     nil,
 	}
 
-	bytes, err := json.Marshal(StoreEvent{
-		EventType: events.DeletePayment,
+	bytes, err := json.Marshal(models.StoreEvent{
+		EventType: models.DeletePaymentEvent,
 		Version:   int64(1),
 		Resource:  &server.Payment{},
 	})
@@ -553,14 +553,14 @@ func (f *DeletePaymentFixture) TestDeletePayment_SetError() {
 	data, err := bson.Marshal(server.ResourceLocator{})
 	f.Assert(err == nil)
 	msg := &nats.Msg{
-		Subject: string(events.DeletePayment),
+		Subject: string(models.DeletePaymentEvent),
 		Reply:   "",
 		Data:    data,
 		Sub:     nil,
 	}
 
-	bytes, err := json.Marshal(StoreEvent{
-		EventType: events.DeletePayment,
+	bytes, err := json.Marshal(models.StoreEvent{
+		EventType: models.DeletePaymentEvent,
 		Version:   int64(1),
 		Resource:  &server.Payment{},
 	})
@@ -588,14 +588,14 @@ func (f *DeletePaymentFixture) TestDeletePayment_NoReply() {
 	data, err := bson.Marshal(server.ResourceLocator{})
 	f.Assert(err == nil)
 	msg := &nats.Msg{
-		Subject: string(events.DeletePayment),
+		Subject: string(models.DeletePaymentEvent),
 		Reply:   "",
 		Data:    data,
 		Sub:     nil,
 	}
 
-	bytes, err := json.Marshal(StoreEvent{
-		EventType: events.DeletePayment,
+	bytes, err := json.Marshal(models.StoreEvent{
+		EventType: models.DeletePaymentEvent,
 		Version:   int64(1),
 		Resource:  &server.Payment{},
 	})
@@ -621,14 +621,14 @@ func (f *DeletePaymentFixture) TestDeletePayment_Reply() {
 	data, err := bson.Marshal(server.ResourceLocator{})
 	f.Assert(err == nil)
 	msg := &nats.Msg{
-		Subject: string(events.DeletePayment),
+		Subject: string(models.DeletePaymentEvent),
 		Reply:   "reply-inbox",
 		Data:    data,
 		Sub:     nil,
 	}
 
-	bytes, err := json.Marshal(StoreEvent{
-		EventType: events.DeletePayment,
+	bytes, err := json.Marshal(models.StoreEvent{
+		EventType: models.DeletePaymentEvent,
 		Version:   int64(1),
 		Resource:  &server.Payment{},
 	})

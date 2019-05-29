@@ -25,6 +25,5 @@ import (
 
 func main() {
 	log.SetHandler(text.New(os.Stdout))
-	log.SetLevel(log.DebugLevel)
 	command.Execute()
 }

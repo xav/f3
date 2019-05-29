@@ -28,10 +28,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/smartystreets/gunit"
 	"github.com/stretchr/testify/mock"
-	"github.com/xav/f3/events"
+	"github.com/xav/f3/models"
 	"gopkg.in/mgo.v2/bson"
 
-	emocks "github.com/xav/f3/events/mocks"
+	natsmocks "github.com/xav/f3/f3nats/mocks"
 
 	"github.com/xav/f3/apiservice/server/mocks"
 )
@@ -65,7 +65,7 @@ func (f *RoutesFixture) Setup() {
 	registerCall("DeletePayment")
 
 	s, err := NewServer(func(s *Server) error {
-		s.Nats = &emocks.NatsConn{}
+		s.Nats = &natsmocks.NatsConn{}
 		s.routesHandler = routesHandler
 		return nil
 	})
@@ -134,12 +134,12 @@ func TestAPICreatePaymentFixture(t *testing.T) {
 type APICreatePaymentFixture struct {
 	*gunit.Fixture
 	server *Server
-	nats   *emocks.NatsConn
+	nats   *natsmocks.NatsConn
 	rr     *httptest.ResponseRecorder
 }
 
 func (f *APICreatePaymentFixture) Setup() {
-	f.nats = &emocks.NatsConn{}
+	f.nats = &natsmocks.NatsConn{}
 	s, err := NewServer(func(s *Server) error {
 		s.Nats = f.nats
 		return nil
@@ -222,7 +222,7 @@ func (f *APICreatePaymentFixture) TestCreatePayment() {
 	req := httptest.NewRequest("POST", "/v1", strings.NewReader(input))
 
 	f.nats.
-		On("Publish", string(events.CreatePayment), mock.Anything).
+		On("Publish", string(models.CreatePaymentEvent), mock.Anything).
 		Return(nil)
 
 	f.server.Router.ServeHTTP(f.rr, req)
@@ -457,7 +457,7 @@ func (f *APICreatePaymentFixture) TestCreatePayment_QueueError() {
 	req := httptest.NewRequest("POST", "/v1", strings.NewReader(input))
 
 	f.nats.
-		On("Publish", string(events.CreatePayment), mock.Anything).
+		On("Publish", string(models.CreatePaymentEvent), mock.Anything).
 		Return(errors.New("queue error"))
 
 	f.server.Router.ServeHTTP(f.rr, req)
@@ -473,12 +473,12 @@ func TestAPIUpdatePaymentFixture(t *testing.T) {
 type APIUpdatePaymentFixture struct {
 	*gunit.Fixture
 	server *Server
-	nats   *emocks.NatsConn
+	nats   *natsmocks.NatsConn
 	rr     *httptest.ResponseRecorder
 }
 
 func (f *APIUpdatePaymentFixture) Setup() {
-	f.nats = &emocks.NatsConn{}
+	f.nats = &natsmocks.NatsConn{}
 	s, err := NewServer(func(s *Server) error {
 		s.Nats = f.nats
 		return nil
@@ -561,7 +561,7 @@ func (f *APIUpdatePaymentFixture) TestUpdatePayment() {
 	req := httptest.NewRequest("PUT", "/v1", strings.NewReader(input))
 
 	f.nats.
-		On("Publish", string(events.UpdatePayment), mock.Anything).
+		On("Publish", string(models.UpdatePaymentEvent), mock.Anything).
 		Return(nil)
 
 	f.server.Router.ServeHTTP(f.rr, req)
@@ -804,7 +804,7 @@ func (f *APIUpdatePaymentFixture) TestUpdatePayment_QueueError() {
 	req := httptest.NewRequest("PUT", "/v1", strings.NewReader(input))
 
 	f.nats.
-		On("Publish", string(events.UpdatePayment), mock.Anything).
+		On("Publish", string(models.UpdatePaymentEvent), mock.Anything).
 		Return(errors.New("queue error"))
 
 	f.server.Router.ServeHTTP(f.rr, req)
@@ -820,12 +820,12 @@ func TestAPIFetchPaymentFixture(t *testing.T) {
 type APIFetchPaymentFixture struct {
 	*gunit.Fixture
 	server *Server
-	nats   *emocks.NatsConn
+	nats   *natsmocks.NatsConn
 	rr     *httptest.ResponseRecorder
 }
 
 func (f *APIFetchPaymentFixture) Setup() {
-	f.nats = &emocks.NatsConn{}
+	f.nats = &natsmocks.NatsConn{}
 	s, err := NewServer(func(s *Server) error {
 		s.Nats = f.nats
 		return nil
@@ -839,19 +839,19 @@ func (f *APIFetchPaymentFixture) Setup() {
 }
 
 func (f *APIFetchPaymentFixture) TestFetchPayment() {
-	locator := ResourceLocator{
+	locator := models.ResourceLocator{
 		OrganisationID: uuid.New(),
 		ID:             uuid.New(),
 	}
 	req := httptest.NewRequest("GET", fmt.Sprintf("/v1/%v/%v", locator.OrganisationID, locator.ID), nil)
 
 	//noinspection SpellCheckingInspection
-	data, err := bson.Marshal(Payment{
+	data, err := bson.Marshal(models.Payment{
 		Type:           "Payment",
 		OrganisationID: uuid.New(),
 		ID:             uuid.New(),
 		Version:        0,
-		Attributes: &PaymentAttributes{
+		Attributes: &models.PaymentAttributes{
 			PaymentID: "123456789012345678",
 			Amount:    100.21,
 			Currency:  "GBP",
@@ -866,9 +866,9 @@ func (f *APIFetchPaymentFixture) TestFetchPayment() {
 			NumericReference:  1002001,
 			Reference:         "Payment for Em's piano lessons",
 			EndToEndReference: "Wil piano Jan",
-			ChargesInformation: ChargesInformation{
+			ChargesInformation: models.ChargesInformation{
 				BearerCode: "SHAR",
-				SenderCharges: []Charges{
+				SenderCharges: []models.Charges{
 					{
 						Amount:   5.00,
 						Currency: "GBP",
@@ -880,7 +880,7 @@ func (f *APIFetchPaymentFixture) TestFetchPayment() {
 				ReceiverChargesAmount:   1.00,
 				ReceiverChargesCurrency: "USD",
 			},
-			Exchange: Exchange{
+			Exchange: models.Exchange{
 				ContractReference: "FX123",
 				ExchangeRate:      2.00000,
 				OriginalAmount:    200.42,
@@ -888,7 +888,7 @@ func (f *APIFetchPaymentFixture) TestFetchPayment() {
 			},
 			SchemePaymentSubType: "InternetBanking",
 			SchemePaymentType:    "ImmediatePayment",
-			BeneficiaryParty: Party{
+			BeneficiaryParty: models.Party{
 				AccountNumber:     "W Owens",
 				BankId:            "403000",
 				BankIdCode:        "GBDSC",
@@ -898,7 +898,7 @@ func (f *APIFetchPaymentFixture) TestFetchPayment() {
 				AccountNumberCode: "BBAN",
 				AccountType:       0,
 			},
-			DebtorParty: Party{
+			DebtorParty: models.Party{
 				AccountNumber:     "GB29XABC10161234567801",
 				BankId:            "203301",
 				BankIdCode:        "GBDSC",
@@ -908,7 +908,7 @@ func (f *APIFetchPaymentFixture) TestFetchPayment() {
 				AccountNumberCode: "IBAN",
 				AccountType:       0,
 			},
-			SponsorParty: Party{
+			SponsorParty: models.Party{
 				AccountNumber: "56781234",
 				BankId:        "123123",
 				BankIdCode:    "GBDSC",
@@ -918,9 +918,9 @@ func (f *APIFetchPaymentFixture) TestFetchPayment() {
 	f.Assert(err == nil)
 
 	f.nats.
-		On("Request", string(events.FetchPayment), mock.Anything, mock.Anything).
+		On("Request", string(models.FetchPaymentEvent), mock.Anything, mock.Anything).
 		Return(&nats.Msg{
-			Subject: string(events.PaymentFound),
+			Subject: string(models.PaymentFoundEvent),
 			Reply:   "",
 			Data:    data,
 			Sub:     nil,
@@ -931,7 +931,7 @@ func (f *APIFetchPaymentFixture) TestFetchPayment() {
 }
 
 func (f *APIFetchPaymentFixture) TestFetchPayment_MissingOrgID() {
-	locator := ResourceLocator{
+	locator := models.ResourceLocator{
 		OrganisationID: uuid.New(),
 		ID:             uuid.New(),
 	}
@@ -942,7 +942,7 @@ func (f *APIFetchPaymentFixture) TestFetchPayment_MissingOrgID() {
 }
 
 func (f *APIFetchPaymentFixture) TestFetchPayment_InvalidOrgID() {
-	locator := ResourceLocator{
+	locator := models.ResourceLocator{
 		OrganisationID: uuid.New(),
 		ID:             uuid.New(),
 	}
@@ -953,7 +953,7 @@ func (f *APIFetchPaymentFixture) TestFetchPayment_InvalidOrgID() {
 }
 
 func (f *APIFetchPaymentFixture) TestFetchPayment_InvalidID() {
-	locator := ResourceLocator{
+	locator := models.ResourceLocator{
 		OrganisationID: uuid.New(),
 		ID:             uuid.New(),
 	}
@@ -964,14 +964,14 @@ func (f *APIFetchPaymentFixture) TestFetchPayment_InvalidID() {
 }
 
 func (f *APIFetchPaymentFixture) TestFetchPayment_QueueError() {
-	locator := ResourceLocator{
+	locator := models.ResourceLocator{
 		OrganisationID: uuid.New(),
 		ID:             uuid.New(),
 	}
 	req := httptest.NewRequest("GET", fmt.Sprintf("/v1/%v/%v", locator.OrganisationID, locator.ID), nil)
 
 	f.nats.
-		On("Request", string(events.FetchPayment), mock.Anything, mock.Anything).
+		On("Request", string(models.FetchPaymentEvent), mock.Anything, mock.Anything).
 		Return(nil, errors.New("queue error"))
 
 	f.server.Router.ServeHTTP(f.rr, req)
@@ -979,16 +979,16 @@ func (f *APIFetchPaymentFixture) TestFetchPayment_QueueError() {
 }
 
 func (f *APIFetchPaymentFixture) TestFetchPayment_NotFound() {
-	locator := ResourceLocator{
+	locator := models.ResourceLocator{
 		OrganisationID: uuid.New(),
 		ID:             uuid.New(),
 	}
 	req := httptest.NewRequest("GET", fmt.Sprintf("/v1/%v/%v", locator.OrganisationID, locator.ID), nil)
 
 	f.nats.
-		On("Request", string(events.FetchPayment), mock.Anything, mock.Anything).
+		On("Request", string(models.FetchPaymentEvent), mock.Anything, mock.Anything).
 		Return(&nats.Msg{
-			Subject: string(events.PaymentNotFound),
+			Subject: string(models.PaymentNotFoundEvent),
 			Reply:   "",
 			Data:    nil,
 			Sub:     nil,
@@ -999,14 +999,14 @@ func (f *APIFetchPaymentFixture) TestFetchPayment_NotFound() {
 }
 
 func (f *APIFetchPaymentFixture) TestFetchPayment_UnrecognisedResponse() {
-	locator := ResourceLocator{
+	locator := models.ResourceLocator{
 		OrganisationID: uuid.New(),
 		ID:             uuid.New(),
 	}
 	req := httptest.NewRequest("GET", fmt.Sprintf("/v1/%v/%v", locator.OrganisationID, locator.ID), nil)
 
 	f.nats.
-		On("Request", string(events.FetchPayment), mock.Anything, mock.Anything).
+		On("Request", string(models.FetchPaymentEvent), mock.Anything, mock.Anything).
 		Return(&nats.Msg{
 			Subject: "SomethingElse",
 			Reply:   "",
@@ -1027,12 +1027,12 @@ func TestAPIDeletePaymentFixture(t *testing.T) {
 type APIDeletePaymentFixture struct {
 	*gunit.Fixture
 	server *Server
-	nats   *emocks.NatsConn
+	nats   *natsmocks.NatsConn
 	rr     *httptest.ResponseRecorder
 }
 
 func (f *APIDeletePaymentFixture) Setup() {
-	f.nats = &emocks.NatsConn{}
+	f.nats = &natsmocks.NatsConn{}
 	s, err := NewServer(func(s *Server) error {
 		s.Nats = f.nats
 		return nil
@@ -1046,7 +1046,7 @@ func (f *APIDeletePaymentFixture) Setup() {
 }
 
 func (f *APIDeletePaymentFixture) TestDeletePayment() {
-	locator := ResourceLocator{
+	locator := models.ResourceLocator{
 		OrganisationID: uuid.New(),
 		ID:             uuid.New(),
 	}
@@ -1057,9 +1057,9 @@ func (f *APIDeletePaymentFixture) TestDeletePayment() {
 	f.Assert(err == nil)
 
 	f.nats.
-		On("Request", string(events.DeletePayment), mock.Anything, mock.Anything).
+		On("Request", string(models.DeletePaymentEvent), mock.Anything, mock.Anything).
 		Return(&nats.Msg{
-			Subject: string(events.PaymentFound),
+			Subject: string(models.PaymentFoundEvent),
 			Reply:   "",
 			Data:    data,
 			Sub:     nil,
@@ -1070,7 +1070,7 @@ func (f *APIDeletePaymentFixture) TestDeletePayment() {
 }
 
 func (f *APIDeletePaymentFixture) TestDeletePayment_MissingOrgID() {
-	locator := ResourceLocator{
+	locator := models.ResourceLocator{
 		OrganisationID: uuid.New(),
 		ID:             uuid.New(),
 	}
@@ -1081,7 +1081,7 @@ func (f *APIDeletePaymentFixture) TestDeletePayment_MissingOrgID() {
 }
 
 func (f *APIDeletePaymentFixture) TestDeletePayment_InvalidOrgID() {
-	locator := ResourceLocator{
+	locator := models.ResourceLocator{
 		OrganisationID: uuid.New(),
 		ID:             uuid.New(),
 	}
@@ -1092,7 +1092,7 @@ func (f *APIDeletePaymentFixture) TestDeletePayment_InvalidOrgID() {
 }
 
 func (f *APIDeletePaymentFixture) TestDeletePayment_InvalidID() {
-	locator := ResourceLocator{
+	locator := models.ResourceLocator{
 		OrganisationID: uuid.New(),
 		ID:             uuid.New(),
 	}
@@ -1103,14 +1103,14 @@ func (f *APIDeletePaymentFixture) TestDeletePayment_InvalidID() {
 }
 
 func (f *APIDeletePaymentFixture) TestDeletePayment_QueueError() {
-	locator := ResourceLocator{
+	locator := models.ResourceLocator{
 		OrganisationID: uuid.New(),
 		ID:             uuid.New(),
 	}
 	req := httptest.NewRequest("DELETE", fmt.Sprintf("/v1/%v/%v", locator.OrganisationID, locator.ID), nil)
 
 	f.nats.
-		On("Request", string(events.DeletePayment), mock.Anything, mock.Anything).
+		On("Request", string(models.DeletePaymentEvent), mock.Anything, mock.Anything).
 		Return(nil, errors.New("queue error"))
 
 	f.server.Router.ServeHTTP(f.rr, req)
@@ -1118,16 +1118,16 @@ func (f *APIDeletePaymentFixture) TestDeletePayment_QueueError() {
 }
 
 func (f *APIDeletePaymentFixture) TestDeletePayment_NotFound() {
-	locator := ResourceLocator{
+	locator := models.ResourceLocator{
 		OrganisationID: uuid.New(),
 		ID:             uuid.New(),
 	}
 	req := httptest.NewRequest("DELETE", fmt.Sprintf("/v1/%v/%v", locator.OrganisationID, locator.ID), nil)
 
 	f.nats.
-		On("Request", string(events.DeletePayment), mock.Anything, mock.Anything).
+		On("Request", string(models.DeletePaymentEvent), mock.Anything, mock.Anything).
 		Return(&nats.Msg{
-			Subject: string(events.PaymentNotFound),
+			Subject: string(models.PaymentNotFoundEvent),
 			Reply:   "",
 			Data:    nil,
 			Sub:     nil,
@@ -1138,14 +1138,14 @@ func (f *APIDeletePaymentFixture) TestDeletePayment_NotFound() {
 }
 
 func (f *APIDeletePaymentFixture) TestDeletePayment_UnrecognisedResponse() {
-	locator := ResourceLocator{
+	locator := models.ResourceLocator{
 		OrganisationID: uuid.New(),
 		ID:             uuid.New(),
 	}
 	req := httptest.NewRequest("DELETE", fmt.Sprintf("/v1/%v/%v", locator.OrganisationID, locator.ID), nil)
 
 	f.nats.
-		On("Request", string(events.DeletePayment), mock.Anything, mock.Anything).
+		On("Request", string(models.DeletePaymentEvent), mock.Anything, mock.Anything).
 		Return(&nats.Msg{
 			Subject: "SomethingElse",
 			Reply:   "",

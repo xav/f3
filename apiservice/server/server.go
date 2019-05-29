@@ -31,14 +31,15 @@ import (
 	"github.com/go-chi/valve"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
-	"github.com/xav/f3/events"
+	"github.com/xav/f3/f3nats"
+	"github.com/xav/f3/models"
 	"gopkg.in/mgo.v2/bson"
 )
 
 type Server struct {
 	Router        *chi.Mux
 	Port          int
-	Nats          events.NatsConn
+	Nats          f3nats.NatsConn
 	routesHandler RoutesHandler
 	ctx           context.Context
 }
@@ -160,7 +161,7 @@ func (s *Server) ListPayments(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) CreatePayment(w http.ResponseWriter, r *http.Request) {
-	payment := Payment{}
+	payment := models.Payment{}
 	if err := json.NewDecoder(r.Body).Decode(&payment); err != nil {
 		log.WithError(err).Warnf("invalid request: '%v'", r.Body)
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -179,7 +180,7 @@ func (s *Server) CreatePayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.Nats.Publish(string(events.CreatePayment), data); err != nil {
+	if err := s.Nats.Publish(string(models.CreatePaymentEvent), data); err != nil {
 		log.WithError(err).Error("Failed to publish create event")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -202,7 +203,7 @@ func (s *Server) FetchPayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := bson.Marshal(ResourceLocator{
+	data, err := bson.Marshal(models.ResourceLocator{
 		OrganisationID: oid,
 		ID:             pid,
 	})
@@ -212,7 +213,7 @@ func (s *Server) FetchPayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msg, err := s.Nats.Request(string(events.FetchPayment), data, 10*time.Millisecond)
+	msg, err := s.Nats.Request(string(models.FetchPaymentEvent), data, 10*time.Millisecond)
 	if err != nil {
 		log.WithError(err).Error("fetch request event failed")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -220,15 +221,15 @@ func (s *Server) FetchPayment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch msg.Subject {
-	case string(events.PaymentFound):
-		payment := Payment{}
+	case string(models.PaymentFoundEvent):
+		payment := models.Payment{}
 		if err := bson.Unmarshal(msg.Data, &payment); err != nil {
 			log.WithError(err).Error("failed to unmarshal payment data")
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		render.DefaultResponder(w, r, payment)
-	case string(events.PaymentNotFound):
+	case string(models.PaymentNotFoundEvent):
 		log.Warnf("payment '%v/%v' was not found", oid.String(), pid.String())
 		http.Error(w, fmt.Sprintf("payment '%v/%v' was not found", oid.String(), pid.String()), http.StatusNotFound)
 	default:
@@ -238,7 +239,7 @@ func (s *Server) FetchPayment(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) UpdatePayment(w http.ResponseWriter, r *http.Request) {
-	payment := Payment{}
+	payment := models.Payment{}
 
 	if err := json.NewDecoder(r.Body).Decode(&payment); err != nil {
 		log.WithError(err).Warnf("invalid request: '%v'", r.Body)
@@ -258,7 +259,7 @@ func (s *Server) UpdatePayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.Nats.Publish(string(events.UpdatePayment), data); err != nil {
+	if err := s.Nats.Publish(string(models.UpdatePaymentEvent), data); err != nil {
 		log.WithError(err).Error("failed to publish create event")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -281,7 +282,7 @@ func (s *Server) DeletePayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := bson.Marshal(ResourceLocator{
+	data, err := bson.Marshal(models.ResourceLocator{
 		OrganisationID: oid,
 		ID:             pid,
 	})
@@ -291,7 +292,7 @@ func (s *Server) DeletePayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msg, err := s.Nats.Request(string(events.DeletePayment), data, 10*time.Millisecond)
+	msg, err := s.Nats.Request(string(models.DeletePaymentEvent), data, 10*time.Millisecond)
 	if err != nil {
 		log.WithError(err).Error("fetch request event failed")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -299,8 +300,8 @@ func (s *Server) DeletePayment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch msg.Subject {
-	case string(events.PaymentFound):
-		resource := ResourceLocator{}
+	case string(models.PaymentFoundEvent):
+		resource := models.ResourceLocator{}
 		if err := bson.Unmarshal(msg.Data, &resource); err != nil {
 			log.WithError(err).Error("failed to unmarshal resource data")
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -308,7 +309,7 @@ func (s *Server) DeletePayment(w http.ResponseWriter, r *http.Request) {
 		}
 		render.Status(r, http.StatusGone)
 		render.DefaultResponder(w, r, resource)
-	case string(events.PaymentNotFound):
+	case string(models.PaymentNotFoundEvent):
 		log.Warnf("resource '%v/%v' was not found", oid.String(), pid.String())
 		http.Error(w, fmt.Sprintf("resource '%v/%v' was not found", oid.String(), pid.String()), http.StatusNotFound)
 	default:
