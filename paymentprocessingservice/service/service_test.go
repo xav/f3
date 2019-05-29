@@ -15,6 +15,7 @@
 package service
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/nats-io/nats.go"
@@ -94,9 +95,15 @@ func (f *CreatePaymentFixture) TestCreatePayment_AlreadyPresent() {
 		Sub:     nil,
 	}
 
+	bytes, err := json.Marshal(StoreEvent{
+		EventType: events.UpdatePayment,
+		Version:   int64(1),
+		Resource:  &server.Payment{},
+	})
+	f.Assert(err == nil)
 	f.redis.
 		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
-		ExpectSlice([]byte("0"), []interface{}{[]byte("val")})
+		ExpectSlice([]byte("0"), []interface{}{bytes})
 
 	if err := f.service.HandleCreatePayment(msg); err == nil {
 		f.Error("handler should have failed")
@@ -213,6 +220,221 @@ func (f *CreatePaymentFixture) TestCreatePayment_Reply() {
 		Return(nil)
 
 	if err := f.service.HandleCreatePayment(msg); err != nil {
+		f.Error(err)
+	}
+}
+
+////////////////////////////////////////
+
+func TestUpdatePaymentFixture(t *testing.T) {
+	gunit.Run(new(UpdatePaymentFixture), t)
+}
+
+type UpdatePaymentFixture struct {
+	*gunit.Fixture
+	nats    *mocks.NatsConn
+	redis   *redigomock.Conn
+	service *Service
+}
+
+func (f *UpdatePaymentFixture) Setup() {
+	f.nats = &mocks.NatsConn{}
+	f.redis = redigomock.NewConn()
+	f.service = &Service{
+		Nats:  f.nats,
+		Redis: f.redis,
+	}
+}
+
+func (f *UpdatePaymentFixture) TestUpdatePayment_InvalidPayload() {
+	msg := &nats.Msg{
+		Subject: string(events.UpdatePayment),
+		Reply:   "",
+		Data:    []byte(("not_bson")),
+		Sub:     nil,
+	}
+
+	if err := f.service.HandleUpdatePayment(msg); err == nil {
+		f.Error("handler should have failed")
+	} else {
+		f.AssertEqual("Document is corrupted", errors.Cause(err).Error())
+	}
+}
+
+func (f *UpdatePaymentFixture) TestUpdatePayment_ScanError() {
+	data, err := bson.Marshal(server.Payment{})
+	f.Assert(err == nil)
+	msg := &nats.Msg{
+		Subject: string(events.UpdatePayment),
+		Reply:   "",
+		Data:    data,
+		Sub:     nil,
+	}
+
+	f.redis.
+		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
+		ExpectError(errors.New("redis scan error"))
+
+	if err := f.service.HandleUpdatePayment(msg); err == nil {
+		f.Error("handler should have failed")
+	} else {
+		f.AssertEqual("redis scan error", errors.Cause(err).Error())
+	}
+}
+
+func (f *UpdatePaymentFixture) TestUpdatePayment_NotPresent() {
+	data, err := bson.Marshal(server.Payment{})
+	f.Assert(err == nil)
+	msg := &nats.Msg{
+		Subject: string(events.UpdatePayment),
+		Reply:   "",
+		Data:    data,
+		Sub:     nil,
+	}
+
+	f.redis.
+		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
+		ExpectSlice([]byte("0"), []interface{}{})
+
+	if err := f.service.HandleUpdatePayment(msg); err == nil {
+		f.Error("handler should have failed")
+	} else {
+		f.AssertEqual("payment id was not found in store", errors.Cause(err).Error())
+	}
+}
+
+func (f *UpdatePaymentFixture) TestUpdatePayment_VersionError() {
+	data, err := bson.Marshal(server.Payment{})
+	f.Assert(err == nil)
+	msg := &nats.Msg{
+		Subject: string(events.UpdatePayment),
+		Reply:   "",
+		Data:    data,
+		Sub:     nil,
+	}
+
+	bytes, err := json.Marshal(StoreEvent{
+		EventType: events.UpdatePayment,
+		Version:   int64(1),
+		Resource:  &server.Payment{},
+	})
+	f.Assert(err == nil)
+	f.redis.
+		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
+		ExpectSlice([]byte("0"), []interface{}{bytes})
+
+	f.redis.
+		Command("INCR", redigomock.NewAnyData()).
+		ExpectError(errors.New("redis incr error"))
+
+	if err := f.service.HandleUpdatePayment(msg); err == nil {
+		f.Error("handler should have failed")
+	} else {
+		f.AssertEqual("redis incr error", errors.Cause(err).Error())
+	}
+}
+
+func (f *UpdatePaymentFixture) TestUpdatePayment_SetError() {
+	data, err := bson.Marshal(server.Payment{})
+	f.Assert(err == nil)
+	msg := &nats.Msg{
+		Subject: string(events.UpdatePayment),
+		Reply:   "",
+		Data:    data,
+		Sub:     nil,
+	}
+
+	bytes, err := json.Marshal(StoreEvent{
+		EventType: events.UpdatePayment,
+		Version:   int64(1),
+		Resource:  &server.Payment{},
+	})
+	f.Assert(err == nil)
+	f.redis.
+		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
+		ExpectSlice([]byte("0"), []interface{}{bytes})
+
+	f.redis.
+		Command("INCR", redigomock.NewAnyData()).
+		Expect(int64(1))
+
+	f.redis.
+		Command("SET", redigomock.NewAnyData(), redigomock.NewAnyData()).
+		ExpectError(errors.New("redis set error"))
+
+	if err := f.service.HandleUpdatePayment(msg); err == nil {
+		f.Error("handler should have failed")
+	} else {
+		f.AssertEqual("redis set error", errors.Cause(err).Error())
+	}
+}
+
+func (f *UpdatePaymentFixture) TestUpdatePayment_NoReply() {
+	data, err := bson.Marshal(server.Payment{})
+	f.Assert(err == nil)
+	msg := &nats.Msg{
+		Subject: string(events.UpdatePayment),
+		Reply:   "",
+		Data:    data,
+		Sub:     nil,
+	}
+
+	bytes, err := json.Marshal(StoreEvent{
+		EventType: events.UpdatePayment,
+		Version:   int64(1),
+		Resource:  &server.Payment{},
+	})
+	f.Assert(err == nil)
+	f.redis.
+		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
+		ExpectSlice([]byte("0"), []interface{}{bytes})
+
+	f.redis.
+		Command("INCR", redigomock.NewAnyData()).
+		Expect(int64(1))
+
+	f.redis.
+		Command("SET", redigomock.NewAnyData(), redigomock.NewAnyData()).
+		Expect("OK")
+
+	if err := f.service.HandleUpdatePayment(msg); err != nil {
+		f.Error(err)
+	}
+}
+
+func (f *UpdatePaymentFixture) TestUpdatePayment_Reply() {
+	data, err := bson.Marshal(server.Payment{})
+	f.Assert(err == nil)
+	msg := &nats.Msg{
+		Subject: string(events.UpdatePayment),
+		Reply:   "reply-inbox",
+		Data:    data,
+		Sub:     nil,
+	}
+
+	bytes, err := json.Marshal(StoreEvent{
+		EventType: events.UpdatePayment,
+		Version:   int64(1),
+		Resource:  &server.Payment{},
+	})
+	f.Assert(err == nil)
+	f.redis.
+		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
+		ExpectSlice([]byte("0"), []interface{}{bytes})
+
+	f.redis.
+		Command("INCR", redigomock.NewAnyData()).
+		Expect(int64(1))
+
+	f.redis.
+		Command("SET", redigomock.NewAnyData(), redigomock.NewAnyData()).
+		Expect("OK")
+
+	f.nats.
+		On("Publish", "reply-inbox", mock.Anything).
+		Return(nil)
+
+	if err := f.service.HandleUpdatePayment(msg); err != nil {
 		f.Error(err)
 	}
 }

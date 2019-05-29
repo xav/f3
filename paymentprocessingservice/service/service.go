@@ -148,7 +148,51 @@ func (s *Service) HandleCreatePayment(msg *nats.Msg) error {
 }
 
 func (s *Service) HandleUpdatePayment(msg *nats.Msg) error {
-	log.Infof("update payment")
+	// Decode the event
+	payment := server.Payment{}
+	if err := bson.Unmarshal(msg.Data, &payment); err != nil {
+		return errors.Wrap(err, "failed to unmarshal update payment event")
+	}
+
+	// Check if the payment is already present
+	_, evts, err := s.scanResources(paymentResource, payment.OrganisationID, payment.ID, 0)
+	if err != nil {
+		return errors.Wrap(err, "failed to check existing payments")
+	}
+	if len(evts) == 0 {
+		return errors.New("payment id was not found in store")
+	}
+
+	// Increment the version index
+	versionKey := fmt.Sprintf(versionKeyTemplate, paymentResource, payment.OrganisationID, payment.ID)
+	version, err := s.Redis.Do("INCR", versionKey)
+	if err != nil {
+		return errors.Wrap(err, "failed to increment aggregate version")
+	}
+
+	// Save the event to the store
+	bytes, err := json.Marshal(StoreEvent{
+		EventType: events.UpdatePayment,
+		Version:   version.(int64),
+		Resource:  &payment,
+	})
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal event data")
+	}
+	eventKey := fmt.Sprintf(eventKeyTemplate, paymentResource, payment.OrganisationID, payment.ID, version)
+	reply, err := s.Redis.Do("SET", eventKey, bytes)
+	if err != nil {
+		return errors.Wrap(err, "failed to store payment event")
+	}
+
+	// Reply if needed
+	if msg.Reply != "" {
+		if err = s.Nats.Publish(msg.Reply, []byte(reply.(string))); err != nil {
+			return errors.Wrap(err, "failed to reply to request")
+		}
+	}
+
+	log.Infof("update payment '%v / %v' (%v)", payment.OrganisationID, payment.ID, version)
 	return nil
 }
 
