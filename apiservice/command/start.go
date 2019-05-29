@@ -15,6 +15,8 @@
 package command
 
 import (
+	"time"
+
 	"github.com/apex/log"
 	"github.com/nats-io/nats.go"
 	"github.com/spf13/cobra"
@@ -27,10 +29,14 @@ type Server struct {
 	server *server.Server
 }
 
-var (
-	port     int
-	natsAddr string
-)
+type UserConfig struct {
+	port          int
+	natsURL       string
+	natsUserCreds string
+	natsKeyFile   string
+}
+
+var config = UserConfig{}
 
 // Init returns the runnable cobra command.
 func (c *Server) Init() *cobra.Command {
@@ -40,27 +46,21 @@ func (c *Server) Init() *cobra.Command {
 		Run:   c.startServer,
 	}
 
-	cmd.PersistentFlags().IntVarP(&port, "port", "p", 8080, "The port to listen on.")
-	cmd.PersistentFlags().StringVarP(&natsAddr, "nats-addr", "n", nats.DefaultURL, "URL of the NATS server.")
+	cmd.PersistentFlags().IntVarP(&config.port, "port", "p", 8080, "The port to listen on.")
+	cmd.PersistentFlags().StringVarP(&config.natsURL, "nats-url", "n", nats.DefaultURL, "The NATS server URLs (separated by comma).")
+	cmd.PersistentFlags().StringVarP(&config.natsUserCreds, "nats-creds", "c", "", "NATS User Credentials File.")
+	cmd.PersistentFlags().StringVarP(&config.natsKeyFile, "nats-nkey", "k", "", "NATS NKey Seed File.")
 
 	return cmd
 }
 
 func (c *Server) startServer(cmd *cobra.Command, args []string) {
-	log.Infof("starting API server")
-
-	// Connect to the NATS server
-	nc, err := nats.Connect(natsAddr)
-	if err != nil {
-		log.WithError(err).Fatalf("failed to connect to NATS server '%v'", natsAddr)
-	}
 
 	// Init the API server
 	s, err := server.NewServer(func(s *server.Server) error {
-		s.Port = port
-		s.Nats = nc
+		s.Port = config.port
 		return nil
-	})
+	}, openNatsConnection)
 	if err != nil {
 		log.WithError(err).Fatal("error creating server")
 	}
@@ -69,4 +69,53 @@ func (c *Server) startServer(cmd *cobra.Command, args []string) {
 	if err := s.Start(); err != nil {
 		log.WithError(err).Error("failed to start server")
 	}
+}
+
+func openNatsConnection(s *server.Server) error {
+	// Connect Options.
+	opts := []nats.Option{nats.Name("f3 payment API")}
+	opts = setupNatsConnOptions(opts)
+
+	// Use UserCredentials
+	if config.natsUserCreds != "" {
+		opts = append(opts, nats.UserCredentials(config.natsUserCreds))
+	}
+
+	// Use Nkey authentication.
+	if config.natsKeyFile != "" {
+		opt, err := nats.NkeyOptionFromSeed(config.natsKeyFile)
+		if err != nil {
+			log.WithError(err).Fatal("failed to load nats seed file")
+		}
+		opts = append(opts, opt)
+	}
+
+	// Connect to NATS
+	log.Infof("connecting to nats")
+	nc, err := nats.Connect(config.natsURL, opts...)
+	if err != nil {
+		log.WithError(err).Fatal("failed to connect to NATS. make sure the nats server is running")
+	}
+
+	s.Nats = nc
+	return nil
+}
+
+func setupNatsConnOptions(opts []nats.Option) []nats.Option {
+	var (
+		totalWait      = 5 * time.Minute
+		reconnectDelay = time.Second
+	)
+	opts = append(opts, nats.ReconnectWait(reconnectDelay))
+	opts = append(opts, nats.MaxReconnects(int(totalWait/reconnectDelay)))
+	opts = append(opts, nats.DisconnectHandler(func(nc *nats.Conn) {
+		log.Infof("Disconnected: will attempt reconnects for %.0fm", totalWait.Minutes())
+	}))
+	opts = append(opts, nats.ReconnectHandler(func(nc *nats.Conn) {
+		log.Infof("Reconnected [%s]", nc.ConnectedUrl())
+	}))
+	opts = append(opts, nats.ClosedHandler(func(nc *nats.Conn) {
+		log.Fatal("Exiting, no servers available")
+	}))
+	return opts
 }
