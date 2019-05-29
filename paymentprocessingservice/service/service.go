@@ -197,7 +197,51 @@ func (s *Service) HandleUpdatePayment(msg *nats.Msg) error {
 }
 
 func (s *Service) HandleDeletePayment(msg *nats.Msg) error {
-	log.Infof("delete payment")
+	// Decode the event
+	locator := server.ResourceLocator{}
+	if err := bson.Unmarshal(msg.Data, &locator); err != nil {
+		return errors.Wrap(err, "failed to unmarshal delete payment event")
+	}
+
+	// Check if the payment is already present
+	_, evts, err := s.scanResources(paymentResource, locator.OrganisationID, locator.ID, 0)
+	if err != nil {
+		return errors.Wrap(err, "failed to check existing payments")
+	}
+	if len(evts) == 0 {
+		return errors.New("payment id was not found in store")
+	}
+
+	// Increment the version index
+	versionKey := fmt.Sprintf(versionKeyTemplate, paymentResource, locator.OrganisationID, locator.ID)
+	version, err := s.Redis.Do("INCR", versionKey)
+	if err != nil {
+		return errors.Wrap(err, "failed to increment aggregate version")
+	}
+
+	// Save the event to the store
+	bytes, err := json.Marshal(StoreEvent{
+		EventType: events.DeletePayment,
+		Version:   version.(int64),
+		Resource:  &locator,
+	})
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal event data")
+	}
+	eventKey := fmt.Sprintf(eventKeyTemplate, paymentResource, locator.OrganisationID, locator.ID, version)
+	reply, err := s.Redis.Do("SET", eventKey, bytes)
+	if err != nil {
+		return errors.Wrap(err, "failed to store payment event")
+	}
+
+	// Reply if needed
+	if msg.Reply != "" {
+		if err = s.Nats.Publish(msg.Reply, []byte(reply.(string))); err != nil {
+			return errors.Wrap(err, "failed to reply to request")
+		}
+	}
+
+	log.Infof("delete payment '%v / %v' (%v)", locator.OrganisationID, locator.ID, version)
 	return nil
 }
 

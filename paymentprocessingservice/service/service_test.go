@@ -438,3 +438,218 @@ func (f *UpdatePaymentFixture) TestUpdatePayment_Reply() {
 		f.Error(err)
 	}
 }
+
+////////////////////////////////////////
+
+func TestDeletePaymentFixture(t *testing.T) {
+	gunit.Run(new(DeletePaymentFixture), t)
+}
+
+type DeletePaymentFixture struct {
+	*gunit.Fixture
+	nats    *mocks.NatsConn
+	redis   *redigomock.Conn
+	service *Service
+}
+
+func (f *DeletePaymentFixture) Setup() {
+	f.nats = &mocks.NatsConn{}
+	f.redis = redigomock.NewConn()
+	f.service = &Service{
+		Nats:  f.nats,
+		Redis: f.redis,
+	}
+}
+
+func (f *DeletePaymentFixture) TestDeletePayment_InvalidPayload() {
+	msg := &nats.Msg{
+		Subject: string(events.DeletePayment),
+		Reply:   "",
+		Data:    []byte(("not_bson")),
+		Sub:     nil,
+	}
+
+	if err := f.service.HandleDeletePayment(msg); err == nil {
+		f.Error("handler should have failed")
+	} else {
+		f.AssertEqual("Document is corrupted", errors.Cause(err).Error())
+	}
+}
+
+func (f *DeletePaymentFixture) TestDeletePayment_ScanError() {
+	data, err := bson.Marshal(server.ResourceLocator{})
+	f.Assert(err == nil)
+	msg := &nats.Msg{
+		Subject: string(events.DeletePayment),
+		Reply:   "",
+		Data:    data,
+		Sub:     nil,
+	}
+
+	f.redis.
+		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
+		ExpectError(errors.New("redis scan error"))
+
+	if err := f.service.HandleDeletePayment(msg); err == nil {
+		f.Error("handler should have failed")
+	} else {
+		f.AssertEqual("redis scan error", errors.Cause(err).Error())
+	}
+}
+
+func (f *DeletePaymentFixture) TestDeletePayment_NotPresent() {
+	data, err := bson.Marshal(server.ResourceLocator{})
+	f.Assert(err == nil)
+	msg := &nats.Msg{
+		Subject: string(events.DeletePayment),
+		Reply:   "",
+		Data:    data,
+		Sub:     nil,
+	}
+
+	f.redis.
+		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
+		ExpectSlice([]byte("0"), []interface{}{})
+
+	if err := f.service.HandleDeletePayment(msg); err == nil {
+		f.Error("handler should have failed")
+	} else {
+		f.AssertEqual("payment id was not found in store", errors.Cause(err).Error())
+	}
+}
+
+func (f *DeletePaymentFixture) TestDeletePayment_VersionError() {
+	data, err := bson.Marshal(server.ResourceLocator{})
+	f.Assert(err == nil)
+	msg := &nats.Msg{
+		Subject: string(events.DeletePayment),
+		Reply:   "",
+		Data:    data,
+		Sub:     nil,
+	}
+
+	bytes, err := json.Marshal(StoreEvent{
+		EventType: events.DeletePayment,
+		Version:   int64(1),
+		Resource:  &server.Payment{},
+	})
+	f.Assert(err == nil)
+	f.redis.
+		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
+		ExpectSlice([]byte("0"), []interface{}{bytes})
+
+	f.redis.
+		Command("INCR", redigomock.NewAnyData()).
+		ExpectError(errors.New("redis incr error"))
+
+	if err := f.service.HandleDeletePayment(msg); err == nil {
+		f.Error("handler should have failed")
+	} else {
+		f.AssertEqual("redis incr error", errors.Cause(err).Error())
+	}
+}
+
+func (f *DeletePaymentFixture) TestDeletePayment_SetError() {
+	data, err := bson.Marshal(server.ResourceLocator{})
+	f.Assert(err == nil)
+	msg := &nats.Msg{
+		Subject: string(events.DeletePayment),
+		Reply:   "",
+		Data:    data,
+		Sub:     nil,
+	}
+
+	bytes, err := json.Marshal(StoreEvent{
+		EventType: events.DeletePayment,
+		Version:   int64(1),
+		Resource:  &server.Payment{},
+	})
+	f.Assert(err == nil)
+	f.redis.
+		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
+		ExpectSlice([]byte("0"), []interface{}{bytes})
+
+	f.redis.
+		Command("INCR", redigomock.NewAnyData()).
+		Expect(int64(1))
+
+	f.redis.
+		Command("SET", redigomock.NewAnyData(), redigomock.NewAnyData()).
+		ExpectError(errors.New("redis set error"))
+
+	if err := f.service.HandleDeletePayment(msg); err == nil {
+		f.Error("handler should have failed")
+	} else {
+		f.AssertEqual("redis set error", errors.Cause(err).Error())
+	}
+}
+
+func (f *DeletePaymentFixture) TestDeletePayment_NoReply() {
+	data, err := bson.Marshal(server.ResourceLocator{})
+	f.Assert(err == nil)
+	msg := &nats.Msg{
+		Subject: string(events.DeletePayment),
+		Reply:   "",
+		Data:    data,
+		Sub:     nil,
+	}
+
+	bytes, err := json.Marshal(StoreEvent{
+		EventType: events.DeletePayment,
+		Version:   int64(1),
+		Resource:  &server.Payment{},
+	})
+	f.Assert(err == nil)
+	f.redis.
+		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
+		ExpectSlice([]byte("0"), []interface{}{bytes})
+
+	f.redis.
+		Command("INCR", redigomock.NewAnyData()).
+		Expect(int64(1))
+
+	f.redis.
+		Command("SET", redigomock.NewAnyData(), redigomock.NewAnyData()).
+		Expect("OK")
+
+	if err := f.service.HandleDeletePayment(msg); err != nil {
+		f.Error(err)
+	}
+}
+
+func (f *DeletePaymentFixture) TestDeletePayment_Reply() {
+	data, err := bson.Marshal(server.ResourceLocator{})
+	f.Assert(err == nil)
+	msg := &nats.Msg{
+		Subject: string(events.DeletePayment),
+		Reply:   "reply-inbox",
+		Data:    data,
+		Sub:     nil,
+	}
+
+	bytes, err := json.Marshal(StoreEvent{
+		EventType: events.DeletePayment,
+		Version:   int64(1),
+		Resource:  &server.Payment{},
+	})
+	f.Assert(err == nil)
+	f.redis.
+		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
+		ExpectSlice([]byte("0"), []interface{}{bytes})
+
+	f.redis.
+		Command("INCR", redigomock.NewAnyData()).
+		Expect(int64(1))
+
+	f.redis.
+		Command("SET", redigomock.NewAnyData(), redigomock.NewAnyData()).
+		Expect("OK")
+
+	f.nats.
+		On("Publish", "reply-inbox", mock.Anything).
+		Return(nil)
+
+	if err := f.service.HandleDeletePayment(msg); err != nil {
+		f.Error(err)
+	}
+}
