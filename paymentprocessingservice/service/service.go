@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/apex/log"
 	"github.com/gomodule/redigo/redis"
@@ -39,9 +40,10 @@ type Service struct {
 }
 
 type StoreEvent struct {
-	events.EventType
-	Version  int64
-	Resource interface{}
+	EventType events.EventType `json:"event_type" bson:"event_type"`
+	Version   int64            `json:"version"    bson:"version"`
+	CreatedAt int64            `json:"created_at" bson:"created_at"`
+	Resource  interface{}      `json:"resource"   bson:"resource"`
 }
 
 const paymentResource = "payment"
@@ -125,6 +127,7 @@ func (s *Service) HandleCreatePayment(msg *nats.Msg) error {
 	bytes, err := json.Marshal(StoreEvent{
 		EventType: events.CreatePayment,
 		Version:   version.(int64),
+		CreatedAt: time.Now().Unix(),
 		Resource:  &payment,
 	})
 	if err != nil {
@@ -174,6 +177,7 @@ func (s *Service) HandleUpdatePayment(msg *nats.Msg) error {
 	bytes, err := json.Marshal(StoreEvent{
 		EventType: events.UpdatePayment,
 		Version:   version.(int64),
+		CreatedAt: time.Now().Unix(),
 		Resource:  &payment,
 	})
 	if err != nil {
@@ -223,6 +227,7 @@ func (s *Service) HandleDeletePayment(msg *nats.Msg) error {
 	bytes, err := json.Marshal(StoreEvent{
 		EventType: events.DeletePayment,
 		Version:   version.(int64),
+		CreatedAt: time.Now().Unix(),
 		Resource:  &locator,
 	})
 	if err != nil {
