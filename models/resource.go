@@ -12,18 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package server
+package models
 
 import (
 	"github.com/google/uuid"
 )
 
-type Aggregate struct {
-	ID      uuid.UUID      `json:"id"      bson:"id"`
-	Version int            `json:"version" bson:"version"`
-}
+type ResourceType string
 
-type PaymentAggregate struct {
-	Aggregate
-	Payment
+const (
+	PaymentResource ResourceType = "Payment"
+)
+
+type ResourceLocator struct {
+	ResourceType   ResourceType
+	OrganisationID uuid.UUID `json:"organisation_id" bson:"organisation_id"`
+	ID             uuid.UUID `json:"id"              bson:"id"`
 }

@@ -12,24 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package server
+package models
 
 import (
 	"cloud.google.com/go/civil"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 )
-
-type ResourceType string
-
-const (
-	PaymentResource ResourceType = "Payment"
-)
-
-type ResourceLocator struct {
-	OrganisationID uuid.UUID `json:"organisation_id" bson:"organisation_id"`
-	ID             uuid.UUID `json:"id"              bson:"id"`
-}
 
 type Payment struct {
 	Type           ResourceType       `json:"type"            bson:"type"`
@@ -55,10 +44,6 @@ type SchemePaymentType string
 type SchemePaymentSubType string
 type Currency string
 type AccountType int
-
-const (
-	DefaultAccountType AccountType = 0
-)
 
 type PaymentAttributes struct {
 	PaymentID            string               `json:"payment_id"               bson:"payment_id"`
