@@ -67,3 +67,22 @@ type NatsConn interface {
 	RequestWithContext(ctx context.Context, subj string, data []byte) (*nats.Msg, error)
 	FlushWithContext(ctx context.Context) error
 }
+
+//go:generate mockery -name NatsSubscription
+type NatsSubscription interface {
+	Type() nats.SubscriptionType
+	IsValid() bool
+	Drain() error
+	Unsubscribe() error
+	AutoUnsubscribe(max int) error
+	NextMsg(timeout time.Duration) (*nats.Msg, error)
+	QueuedMsgs() (int, error)
+	Pending() (int, int, error)
+	MaxPending() (int, int, error)
+	ClearMaxPending() error
+	PendingLimits() (int, int, error)
+	SetPendingLimits(msgLimit, bytesLimit int) error
+	Delivered() (int64, error)
+	Dropped() (int, error)
+	NextMsgWithContext(ctx context.Context) (*nats.Msg, error)
+}
