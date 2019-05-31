@@ -23,6 +23,7 @@ const (
 
 	FetchPaymentEvent EventType = "payment:fetch"
 	ListPaymentEvent  EventType = "payment:list"
+	DumpPaymentEvent  EventType = "payment:dump"
 
 	PaymentFoundEvent    EventType = "payment:found"
 	PaymentNotFoundEvent EventType = "payment:notfound"
