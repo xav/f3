@@ -43,7 +43,7 @@ type Service struct {
 	Handlers map[models.EventType]MsgHandler
 
 	subscriptions map[models.EventType]f3nats.NatsSubscription
-	subscribe     func(f3nats.NatsConn, models.EventType, MsgHandler) (f3nats.NatsSubscription, error)
+	subscribe     func(*Service, models.EventType, MsgHandler) (f3nats.NatsSubscription, error)
 	unsubscribe   func(f3nats.NatsSubscription) error
 }
 
@@ -54,7 +54,7 @@ var (
 	serviceFailed  = make(chan bool)
 )
 
-type MsgHandler func(msg *nats.Msg) error
+type MsgHandler func(*Service, *nats.Msg) error
 
 func NewService(clientID string, handlers ...map[models.EventType]MsgHandler) *Service {
 	service := &Service{
@@ -91,7 +91,7 @@ func (s *Service) Start(config *Config) error {
 
 	// Subscribe handlers
 	for k, v := range s.Handlers {
-		sub, err := s.subscribe(s.Nats, k, v)
+		sub, err := s.subscribe(s, k, v)
 		if err != nil {
 			s.close()
 			serviceFailed <- true
@@ -209,9 +209,9 @@ func setupNatsConnOptions(opts []nats.Option) []nats.Option {
 	return opts
 }
 
-func subscribe(natsConn f3nats.NatsConn, event models.EventType, handler MsgHandler) (f3nats.NatsSubscription, error) {
-	subscription, err := natsConn.Subscribe(string(event), func(msg *nats.Msg) {
-		if err := handler(msg); err != nil {
+func subscribe(s *Service, event models.EventType, handler MsgHandler) (f3nats.NatsSubscription, error) {
+	subscription, err := s.Nats.Subscribe(string(event), func(msg *nats.Msg) {
+		if err := handler(s, msg); err != nil {
 			log.WithError(err).Error("event handler failed")
 		}
 	})

@@ -49,8 +49,8 @@ func (f *ServiceFixture) fakePreRun(s *Service, config *Config) error {
 	return nil
 }
 
-func (f *ServiceFixture) fakeSubscribe(natsConn f3nats.NatsConn, event models.EventType, handler MsgHandler) (f3nats.NatsSubscription, error) {
-	_, err := subscribe(natsConn, event, handler)
+func (f *ServiceFixture) fakeSubscribe(s *Service, event models.EventType, handler MsgHandler) (f3nats.NatsSubscription, error) {
+	_, err := subscribe(s, event, handler)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to subscribe to '%v'", event)
 	}
@@ -65,8 +65,8 @@ func (f *ServiceFixture) TestNewService_NoHandlers() {
 
 func (f *ServiceFixture) TestNewService_Handlers() {
 	handlers := map[models.EventType]MsgHandler{
-		models.CreatePaymentEvent: func(msg *nats.Msg) error { return nil },
-		models.UpdatePaymentEvent: func(msg *nats.Msg) error { return nil },
+		models.CreatePaymentEvent: func(s *Service, msg *nats.Msg) error { return nil },
+		models.UpdatePaymentEvent: func(s *Service, msg *nats.Msg) error { return nil },
 	}
 	service := NewService("client id", handlers)
 	f.Assert(len(service.Handlers) == 2)
@@ -88,8 +88,8 @@ func (f *ServiceFixture) TestStartService_NoHandlers() {
 
 func (f *ServiceFixture) TestStartService_Handlers() {
 	handlers := map[models.EventType]MsgHandler{
-		models.CreatePaymentEvent: func(msg *nats.Msg) error { return nil },
-		models.UpdatePaymentEvent: func(msg *nats.Msg) error { return nil },
+		models.CreatePaymentEvent: func(s *Service, msg *nats.Msg) error { return nil },
+		models.UpdatePaymentEvent: func(s *Service, msg *nats.Msg) error { return nil },
 	}
 	service := NewService("test client", handlers)
 	service.PreRun = []func(*Service, *Config) error{f.fakePreRun}
@@ -120,8 +120,8 @@ func (f *ServiceFixture) TestStartService_Handlers() {
 
 func (f *ServiceFixture) TestStartService_Handlers_SubscribeFailed() {
 	handlers := map[models.EventType]MsgHandler{
-		models.CreatePaymentEvent: func(msg *nats.Msg) error { return nil },
-		models.UpdatePaymentEvent: func(msg *nats.Msg) error { return nil },
+		models.CreatePaymentEvent: func(s *Service, msg *nats.Msg) error { return nil },
+		models.UpdatePaymentEvent: func(s *Service, msg *nats.Msg) error { return nil },
 	}
 	service := NewService("test client", handlers)
 	service.PreRun = []func(*Service, *Config) error{f.fakePreRun}
@@ -140,8 +140,8 @@ func (f *ServiceFixture) TestStartService_Handlers_SubscribeFailed() {
 
 func (f *ServiceFixture) TestStartService_PreRunFailed() {
 	handlers := map[models.EventType]MsgHandler{
-		models.CreatePaymentEvent: func(msg *nats.Msg) error { return nil },
-		models.UpdatePaymentEvent: func(msg *nats.Msg) error { return nil },
+		models.CreatePaymentEvent: func(s *Service, msg *nats.Msg) error { return nil },
+		models.UpdatePaymentEvent: func(s *Service, msg *nats.Msg) error { return nil },
 	}
 	service := NewService("test client", handlers)
 	service.PreRun = []func(*Service, *Config) error{func(s *Service, config *Config) error {
