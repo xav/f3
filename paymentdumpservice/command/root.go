@@ -21,8 +21,8 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "f3query",
-	Short: "f3 payment query service",
+	Use:   "f3dump",
+	Short: "f3 payment dump service",
 }
 
 func Execute() {

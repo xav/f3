@@ -21,7 +21,7 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "f3pps",
+	Use:   "f3processing",
 	Short: "f3 payment processing service",
 }
 

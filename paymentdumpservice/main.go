@@ -12,24 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package command
+package main
 
 import (
 	"os"
 
-	"github.com/spf13/cobra"
+	"github.com/apex/log"
+	"github.com/apex/log/handlers/cli"
+
+	"github.com/xav/f3/paymentqueryservice/command"
 )
 
-var rootCmd = &cobra.Command{
-	Use:   "f3query",
-	Short: "f3 payment query service",
-}
-
-func Execute() {
-	serverCmd := &Start{}
-	rootCmd.AddCommand(serverCmd.Init())
-
-	if err := rootCmd.Execute(); err != nil {
-		os.Exit(1)
-	}
+func main() {
+	log.SetHandler(cli.New(os.Stdout))
+	command.Execute()
 }
