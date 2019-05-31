@@ -12,13 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package service
+package command
 
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"os/signal"
 	"time"
 
 	"github.com/apex/log"
@@ -26,75 +24,53 @@ import (
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
 	"github.com/pkg/errors"
-	"github.com/xav/f3/apiservice/server"
-	"github.com/xav/f3/f3nats"
+	"github.com/spf13/cobra"
 	"github.com/xav/f3/models"
+	"github.com/xav/f3/service"
 	"gopkg.in/mgo.v2/bson"
 )
 
-type Service struct {
-	ClientID      string
-	Nats          f3nats.NatsConn
-	Redis         redis.Conn
-	subscriptions []*nats.Subscription
-	PreRun        []func(*Service) error
-}
+type Start struct{}
 
-type MsgHandler func(msg *nats.Msg) error
+var config = service.Config{}
 
-func (s *Service) Start() error {
-	for _, r := range s.PreRun {
-		if err := r(s); err != nil {
-			log.WithError(err).Fatal("initialisation error")
-		}
+// Init returns the runnable cobra command.
+func (c *Start) Init() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "start",
+		Short: "Start the payment processing service",
+		Run:   c.start,
 	}
 
-	s.subscriptions = make([]*nats.Subscription, 0, 3)
-	s.subscribe(models.CreatePaymentEvent, s.HandleCreatePayment)
-	s.subscribe(models.UpdatePaymentEvent, s.HandleUpdatePayment)
-	s.subscribe(models.DeletePaymentEvent, s.HandleDeletePayment)
+	cmd.PersistentFlags().StringVarP(&config.RedisURL, "redis-url", "r", "redis://localhost:6379", "Redis server URL.")
+	cmd.PersistentFlags().StringVarP(&config.NatsURL, "nats-url", "n", nats.DefaultURL, "The NATS server URLs (separated by comma).")
+	cmd.PersistentFlags().StringVarP(&config.NatsUserCreds, "nats-creds", "c", "", "NATS User Credentials File.")
+	cmd.PersistentFlags().StringVarP(&config.NatsKeyFile, "nats-nkey", "k", "", "NATS NKey Seed File.")
 
-	// Wait for a SIGINT (e.g. triggered by user with CTRL-C)
-	// Run cleanup when signal is received
-	stopChan := make(chan os.Signal, 1)
-	cleanupDone := make(chan bool)
-	signal.Notify(stopChan, os.Interrupt)
-	go func() {
-		for range stopChan {
-			log.Info("unsubscribing and closing connections...")
-
-			// NATS
-			for _, s := range s.subscriptions {
-				_ = s.Unsubscribe()
-			}
-			s.Nats.Close()
-
-			// Redis
-			if err := s.Redis.Close(); err != nil {
-				log.WithError(err).Error("failed to close redis connection")
-			}
-
-			cleanupDone <- true
-		}
-	}()
-
-	log.Info("f3 payment processing service is running")
-
-	<-cleanupDone
-	log.Info("goodbye")
-
-	return nil
+	return cmd
 }
 
-func (s *Service) HandleCreatePayment(msg *nats.Msg) error {
+func (c *Start) start(cmd *cobra.Command, args []string) {
+	handlers := map[models.EventType]service.MsgHandler{
+		models.CreatePaymentEvent: HandleCreatePayment,
+		models.UpdatePaymentEvent: HandleUpdatePayment,
+		models.DeletePaymentEvent: HandleDeletePayment,
+	}
+	s := service.NewService("f3 payment processing", handlers)
+	if err := s.Start(&config); err != nil {
+		log.WithError(err).Error("failed to start service")
+	}
+}
+
+func HandleCreatePayment(s *service.Service, msg *nats.Msg) error {
 	// Decode the event
-	payment := server.Payment{}
+	payment := models.Payment{}
 	if err := bson.Unmarshal(msg.Data, &payment); err != nil {
 		return errors.Wrap(err, "failed to unmarshal create payment event")
 	}
 
 	// Check if the payment is already present
-	_, evts, err := s.scanResources(models.PaymentResource, payment.OrganisationID, payment.ID, 0)
+	_, evts, err := scanResources(s.Redis, models.PaymentResource, payment.OrganisationID, payment.ID, 0)
 	if err != nil {
 		return errors.Wrap(err, "failed to check existing payments")
 	}
@@ -136,15 +112,15 @@ func (s *Service) HandleCreatePayment(msg *nats.Msg) error {
 	return nil
 }
 
-func (s *Service) HandleUpdatePayment(msg *nats.Msg) error {
+func HandleUpdatePayment(s *service.Service, msg *nats.Msg) error {
 	// Decode the event
-	payment := server.Payment{}
+	payment := models.Payment{}
 	if err := bson.Unmarshal(msg.Data, &payment); err != nil {
 		return errors.Wrap(err, "failed to unmarshal update payment event")
 	}
 
 	// Check if the payment is already present
-	_, evts, err := s.scanResources(models.PaymentResource, payment.OrganisationID, payment.ID, 0)
+	_, evts, err := scanResources(s.Redis, models.PaymentResource, payment.OrganisationID, payment.ID, 0)
 	if err != nil {
 		return errors.Wrap(err, "failed to check existing payments")
 	}
@@ -186,15 +162,15 @@ func (s *Service) HandleUpdatePayment(msg *nats.Msg) error {
 	return nil
 }
 
-func (s *Service) HandleDeletePayment(msg *nats.Msg) error {
+func HandleDeletePayment(s *service.Service, msg *nats.Msg) error {
 	// Decode the event
-	locator := server.ResourceLocator{}
+	locator := models.ResourceLocator{}
 	if err := bson.Unmarshal(msg.Data, &locator); err != nil {
 		return errors.Wrap(err, "failed to unmarshal delete payment event")
 	}
 
 	// Check if the payment is already present
-	_, evts, err := s.scanResources(models.PaymentResource, locator.OrganisationID, locator.ID, 0)
+	_, evts, err := scanResources(s.Redis, models.PaymentResource, locator.OrganisationID, locator.ID, 0)
 	if err != nil {
 		return errors.Wrap(err, "failed to check existing payments")
 	}
@@ -236,13 +212,13 @@ func (s *Service) HandleDeletePayment(msg *nats.Msg) error {
 	return nil
 }
 
-func (s *Service) scanResources(resourceType models.ResourceType, organizationID uuid.UUID, resourceID uuid.UUID, cursor uint8) (uint8, [][]byte, error) {
+func scanResources(rc redis.Conn, resourceType models.ResourceType, organizationID uuid.UUID, resourceID uuid.UUID, cursor uint8) (uint8, [][]byte, error) {
 	var (
 		items   [][]byte
 		scanKey = fmt.Sprintf(models.EventKeyScanTemplate, resourceType, organizationID, resourceID)
 	)
 
-	existing, err := redis.Values(s.Redis.Do("SCAN", cursor, "MATCH", scanKey))
+	existing, err := redis.Values(rc.Do("SCAN", cursor, "MATCH", scanKey))
 	if err != nil {
 		return 0, nil, errors.Wrapf(err, "failed to scan '%v' resources '%v/%v'", resourceType, organizationID, resourceID)
 	}
@@ -251,21 +227,4 @@ func (s *Service) scanResources(resourceType models.ResourceType, organizationID
 	}
 
 	return cursor, items, nil
-}
-
-func (s *Service) subscribe(event models.EventType, handler MsgHandler) {
-	subscription, err := s.Nats.Subscribe(string(event), func(msg *nats.Msg) {
-		if err := handler(msg); err != nil {
-			log.WithError(err).Error("event handler failed")
-		}
-	})
-	if err != nil {
-		for _, s := range s.subscriptions {
-			_ = s.Unsubscribe()
-		}
-		s.Nats.Close()
-		log.Fatalf("failed to subscribe to '%v'", event)
-	}
-
-	s.subscriptions = append(s.subscriptions, subscription)
 }

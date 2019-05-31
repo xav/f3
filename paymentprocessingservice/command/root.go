@@ -26,7 +26,7 @@ var rootCmd = &cobra.Command{
 }
 
 func Execute() {
-	serverCmd := &Server{}
+	serverCmd := &Start{}
 	rootCmd.AddCommand(serverCmd.Init())
 
 	if err := rootCmd.Execute(); err != nil {
