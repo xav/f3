@@ -28,10 +28,10 @@ import (
 )
 
 type Config struct {
-	redisURL      string
-	natsURL       string
-	natsUserCreds string
-	natsKeyFile   string
+	RedisURL      string
+	NatsURL       string
+	NatsUserCreds string
+	NatsKeyFile   string
 }
 
 type Service struct {
@@ -135,13 +135,13 @@ func openNatsConnection(s *Service, config *Config) error {
 	opts = setupNatsConnOptions(opts)
 
 	// Use UserCredentials
-	if config.natsUserCreds != "" {
-		opts = append(opts, nats.UserCredentials(config.natsUserCreds))
+	if config.NatsUserCreds != "" {
+		opts = append(opts, nats.UserCredentials(config.NatsUserCreds))
 	}
 
 	// Use Nkey authentication.
-	if config.natsKeyFile != "" {
-		opt, err := nats.NkeyOptionFromSeed(config.natsKeyFile)
+	if config.NatsKeyFile != "" {
+		opt, err := nats.NkeyOptionFromSeed(config.NatsKeyFile)
 		if err != nil {
 			log.WithError(err).Fatal("failed to load nats seed file")
 		}
@@ -150,7 +150,7 @@ func openNatsConnection(s *Service, config *Config) error {
 
 	// Connect to NATS
 	log.Infof("connecting to nats")
-	nc, err := nats.Connect(config.natsURL, opts...)
+	nc, err := nats.Connect(config.NatsURL, opts...)
 	if err != nil {
 		log.WithError(err).Fatal("failed to connect to NATS. make sure the nats server is running")
 	}
@@ -173,7 +173,7 @@ func closeNatsConnection(s *Service) {
 
 func openRedisConnection(s *Service, config *Config) error {
 	log.Infof("connecting to redis")
-	c, err := redis.DialURL(config.redisURL)
+	c, err := redis.DialURL(config.RedisURL)
 	if err != nil {
 		return errors.Wrap(err, "failed to connect to Redis")
 	}
