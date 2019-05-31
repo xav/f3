@@ -6,6 +6,8 @@ workflows:
     jobs:
       - build_f3api
       - build_f3processing
+      - build_f3query
+      - build_f3dump
 
 jobs:
   build_f3api:
