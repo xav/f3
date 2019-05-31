@@ -15,21 +15,31 @@
 package command
 
 import (
-	"os"
+	"testing"
 
-	"github.com/spf13/cobra"
+	"github.com/rafaeljusto/redigomock"
+	"github.com/smartystreets/gunit"
+	"github.com/xav/f3/f3nats/mocks"
+	"github.com/xav/f3/service"
 )
 
-var rootCmd = &cobra.Command{
-	Use:   "f3pps",
-	Short: "f3 payment query service",
+func TestPaymentServiceFixture(t *testing.T) {
+	gunit.Run(new(PaymentServiceFixture), t)
 }
 
-func Execute() {
-	serverCmd := &Start{}
-	rootCmd.AddCommand(serverCmd.Init())
-
-	if err := rootCmd.Execute(); err != nil {
-		os.Exit(1)
-	}
+type PaymentServiceFixture struct {
+	*gunit.Fixture
+	nats    *mocks.NatsConn
+	redis   *redigomock.Conn
+	service *service.Service
 }
+
+func (f *PaymentServiceFixture) Setup() {
+	f.nats = &mocks.NatsConn{}
+	f.redis = redigomock.NewConn()
+	f.service = service.NewService("test client")
+	f.service.Nats = f.nats
+	f.service.Redis = f.redis
+}
+
+////////////////////////////////////////
