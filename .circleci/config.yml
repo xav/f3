@@ -83,3 +83,79 @@ jobs:
           key: v1-pkg-cache
           paths:
             - "/go/pkg"
+
+  build_f3query:
+    docker:
+      - image: circleci/golang:1.12 #
+
+    environment: # environment variables for the build itself
+      TEST_RESULTS: /tmp/artifacts # path to where test results will be saved
+
+    steps: # steps that comprise the `build` job
+      # check out source code to working directory
+      - checkout
+
+      # create the test results directory
+      - run:
+          name: "Create a temp directory for artifacts"
+          command: |
+            mkdir -p $TEST_RESULTS
+
+      # restores saved cache if no changes are detected since last run
+      - restore_cache:
+          keys:
+            - v1-pkg-cache
+
+      - run: go get -v -t -d ./paymentqueryservice/...
+
+      - run:
+          name: Run unit tests
+          # Store the results of our tests in the /tmp/artifacts directory
+          command: |
+            go test ./paymentqueryservice/...
+
+      # - run: make # pull and build dependencies for the project
+
+      # Store cache in the /go/pkg directory
+      - save_cache:
+          key: v1-pkg-cache
+          paths:
+            - "/go/pkg"
+
+  build_f3dump:
+    docker:
+      - image: circleci/golang:1.12 #
+
+    environment: # environment variables for the build itself
+      TEST_RESULTS: /tmp/artifacts # path to where test results will be saved
+
+    steps: # steps that comprise the `build` job
+      # check out source code to working directory
+      - checkout
+
+      # create the test results directory
+      - run:
+          name: "Create a temp directory for artifacts"
+          command: |
+            mkdir -p $TEST_RESULTS
+
+      # restores saved cache if no changes are detected since last run
+      - restore_cache:
+          keys:
+            - v1-pkg-cache
+
+      - run: go get -v -t -d ./paymentdumpservice/...
+
+      - run:
+          name: Run unit tests
+          # Store the results of our tests in the /tmp/artifacts directory
+          command: |
+            go test ./paymentdumpservice/...
+
+      # - run: make # pull and build dependencies for the project
+
+      # Store cache in the /go/pkg directory
+      - save_cache:
+          key: v1-pkg-cache
+          paths:
+            - "/go/pkg"

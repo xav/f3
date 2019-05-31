@@ -1,0 +1,58 @@
+version: "3.3"
+services:
+  f3api:
+    build:
+      dockerfile: apiservice/Dockerfile
+      context: ./apiservice
+    image: f3api
+    container_name: f3api
+    ports:
+      - "8080:8080"
+    command: start -n nats://nats:4222
+    depends_on:
+      - nats
+
+  f3processing:
+    build:
+      dockerfile: paymentprocessingservice/Dockerfile
+      context: ./paymentprocessingservice
+    image: f3processing
+    container_name: f3processing
+    command: start -n nats://nats:4222 -r redis://redis:6379
+    depends_on:
+      - nats
+      - redis
+
+  f3query:
+    build:
+      dockerfile: paymentqueryservice/Dockerfile
+      context: ./paymentqueryservice
+    image: f3query
+    container_name: f3query
+    command: start -n nats://nats:4222 -r redis://redis:6379
+    depends_on:
+      - nats
+      - redis
+
+  f3dump:
+    build:
+      dockerfile: paymentdumpservice/Dockerfile
+      context: ./paymentdumpservice
+    image: f3dump
+    container_name: f3dump
+    command: start -n nats://nats:4222 -r redis://redis:6379
+    depends_on:
+      - nats
+      - redis
+
+  nats:
+    image: nats:latest
+    expose:
+      - "4222"
+      - "8222"
+      - "6222"
+
+  redis:
+    image: redis:latest
+    expose:
+      - "6379"
