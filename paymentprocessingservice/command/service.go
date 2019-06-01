@@ -214,7 +214,7 @@ func HandleDeletePayment(s *service.Service, msg *nats.Msg) error {
 
 func scanResources(rc redis.Conn, resourceType models.ResourceType, organizationID uuid.UUID, resourceID uuid.UUID, cursor uint8) (uint8, [][]byte, error) {
 	var (
-		items   [][]byte
+		items   = make([][]byte, 0)
 		scanKey = fmt.Sprintf(models.EventKeyScanTemplate, resourceType, organizationID, resourceID)
 	)
 
