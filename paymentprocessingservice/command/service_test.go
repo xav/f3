@@ -18,6 +18,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/gomodule/redigo/redis"
+	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
 	"github.com/pkg/errors"
 	"github.com/rafaeljusto/redigomock"
@@ -65,6 +67,26 @@ func SetupTest() *PaymentServiceTestFixture {
 	return f
 }
 
+func NewTestStart(t *testing.T, s ...*Start) *Start {
+	t.Helper()
+
+	start := &Start{
+		scanVersionsKeys: func(rc redis.Conn, resourceType models.ResourceType, organizationID *uuid.UUID, resourceID *uuid.UUID, cursor uint8) (uint8, [][]byte, error) {
+			return 0, nil, nil
+		},
+	}
+
+	if len(s) == 0 {
+		return start
+	}
+
+	if s[0].scanVersionsKeys != nil {
+		start.scanVersionsKeys = s[0].scanVersionsKeys
+	}
+
+	return start
+}
+
 ////////////////////////////////////////
 
 func TestCreatePayment(t *testing.T) {
@@ -79,8 +101,9 @@ func TestCreatePayment(t *testing.T) {
 
 func TestCreatePayment_InvalidPayload(t *testing.T) {
 	f := SetupTest()
+	s := NewTestStart(t)
 
-	err := HandleCreatePayment(f.service, &nats.Msg{
+	err := s.HandleCreatePayment(f.service, &nats.Msg{
 		Subject: string(models.CreatePaymentEvent),
 		Reply:   "",
 		Data:    []byte(("not_bson")),
@@ -92,31 +115,31 @@ func TestCreatePayment_InvalidPayload(t *testing.T) {
 
 func TestCreatePayment_ScanError(t *testing.T) {
 	f := SetupTest()
-	f.redis.
-		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
-		ExpectError(errors.New("redis scan error"))
+	s := NewTestStart(t, &Start{
+		scanVersionsKeys: func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID, uint8) (uint8, [][]byte, error) {
+			return 0, nil, errors.New("scan error")
+		},
+	})
 
-	err := HandleCreatePayment(f.service, &nats.Msg{
+	err := s.HandleCreatePayment(f.service, &nats.Msg{
 		Subject: string(models.CreatePaymentEvent),
 		Reply:   "",
 		Data:    bsonMarshal(t, models.Payment{}),
 		Sub:     nil,
 	})
 
-	require.EqualError(t, errors.Cause(err), "redis scan error")
+	require.EqualError(t, errors.Cause(err), "scan error")
 }
 
 func TestCreatePayment_AlreadyPresent(t *testing.T) {
 	f := SetupTest()
-	f.redis.
-		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
-		ExpectSlice([]byte("0"), []interface{}{jsonMarshal(t, models.StoreEvent{
-			EventType: models.UpdatePaymentEvent,
-			Version:   int64(1),
-			Resource:  &models.Payment{},
-		})})
+	s := NewTestStart(t, &Start{
+		scanVersionsKeys: func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID, uint8) (uint8, [][]byte, error) {
+			return 0, [][]byte{[]byte("v/Payment/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000")}, nil
+		},
+	})
 
-	err := HandleCreatePayment(f.service, &nats.Msg{
+	err := s.HandleCreatePayment(f.service, &nats.Msg{
 		Subject: string(models.CreatePaymentEvent),
 		Reply:   "",
 		Data:    bsonMarshal(t, models.Payment{}),
@@ -128,14 +151,12 @@ func TestCreatePayment_AlreadyPresent(t *testing.T) {
 
 func TestCreatePayment_VersionError(t *testing.T) {
 	f := SetupTest()
-	f.redis.
-		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
-		ExpectSlice([]byte("0"), []interface{}{})
+	s := NewTestStart(t)
 	f.redis.
 		Command("INCR", redigomock.NewAnyData()).
 		ExpectError(errors.New("redis incr error"))
 
-	err := HandleCreatePayment(f.service, &nats.Msg{
+	err := s.HandleCreatePayment(f.service, &nats.Msg{
 		Subject: string(models.CreatePaymentEvent),
 		Reply:   "",
 		Data:    bsonMarshal(t, models.Payment{}),
@@ -147,9 +168,7 @@ func TestCreatePayment_VersionError(t *testing.T) {
 
 func TestCreatePayment_SetError(t *testing.T) {
 	f := SetupTest()
-	f.redis.
-		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
-		ExpectSlice([]byte("0"), []interface{}{})
+	s := NewTestStart(t)
 	f.redis.
 		Command("INCR", redigomock.NewAnyData()).
 		Expect(int64(1))
@@ -157,7 +176,7 @@ func TestCreatePayment_SetError(t *testing.T) {
 		Command("SET", redigomock.NewAnyData(), redigomock.NewAnyData()).
 		ExpectError(errors.New("redis set error"))
 
-	err := HandleCreatePayment(f.service, &nats.Msg{
+	err := s.HandleCreatePayment(f.service, &nats.Msg{
 		Subject: string(models.CreatePaymentEvent),
 		Reply:   "",
 		Data:    bsonMarshal(t, models.Payment{}),
@@ -169,9 +188,7 @@ func TestCreatePayment_SetError(t *testing.T) {
 
 func TestCreatePayment_NoReply(t *testing.T) {
 	f := SetupTest()
-	f.redis.
-		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
-		ExpectSlice([]byte("0"), []interface{}{})
+	s := NewTestStart(t)
 	f.redis.
 		Command("INCR", redigomock.NewAnyData()).
 		Expect(int64(1))
@@ -179,7 +196,7 @@ func TestCreatePayment_NoReply(t *testing.T) {
 		Command("SET", redigomock.NewAnyData(), redigomock.NewAnyData()).
 		Expect("OK")
 
-	err := HandleCreatePayment(f.service, &nats.Msg{
+	err := s.HandleCreatePayment(f.service, &nats.Msg{
 		Subject: string(models.CreatePaymentEvent),
 		Reply:   "",
 		Data:    bsonMarshal(t, models.Payment{}),
@@ -191,9 +208,7 @@ func TestCreatePayment_NoReply(t *testing.T) {
 
 func TestCreatePayment_Reply(t *testing.T) {
 	f := SetupTest()
-	f.redis.
-		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
-		ExpectSlice([]byte("0"), []interface{}{})
+	s := NewTestStart(t)
 	f.redis.
 		Command("INCR", redigomock.NewAnyData()).
 		Expect(int64(1))
@@ -204,7 +219,7 @@ func TestCreatePayment_Reply(t *testing.T) {
 		On("Publish", "reply-inbox", mock.Anything).
 		Return(nil)
 
-	err := HandleCreatePayment(f.service, &nats.Msg{
+	err := s.HandleCreatePayment(f.service, &nats.Msg{
 		Subject: string(models.CreatePaymentEvent),
 		Reply:   "reply-inbox",
 		Data:    bsonMarshal(t, models.Payment{}),
@@ -228,8 +243,9 @@ func TestUpdatePayment(t *testing.T) {
 
 func TestUpdatePayment_InvalidPayload(t *testing.T) {
 	f := SetupTest()
+	s := NewTestStart(t)
 
-	err := HandleUpdatePayment(f.service, &nats.Msg{
+	err := s.HandleUpdatePayment(f.service, &nats.Msg{
 		Subject: string(models.UpdatePaymentEvent),
 		Reply:   "",
 		Data:    []byte(("not_bson")),
@@ -241,27 +257,27 @@ func TestUpdatePayment_InvalidPayload(t *testing.T) {
 
 func TestUpdatePayment_ScanError(t *testing.T) {
 	f := SetupTest()
-	f.redis.
-		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
-		ExpectError(errors.New("redis scan error"))
+	s := NewTestStart(t, &Start{
+		scanVersionsKeys: func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID, uint8) (uint8, [][]byte, error) {
+			return 0, nil, errors.New("scan error")
+		},
+	})
 
-	err := HandleUpdatePayment(f.service, &nats.Msg{
+	err := s.HandleUpdatePayment(f.service, &nats.Msg{
 		Subject: string(models.UpdatePaymentEvent),
 		Reply:   "",
 		Data:    bsonMarshal(t, models.Payment{}),
 		Sub:     nil,
 	})
 
-	require.EqualError(t, errors.Cause(err), "redis scan error")
+	require.EqualError(t, errors.Cause(err), "scan error")
 }
 
 func TestUpdatePayment_NotPresent(t *testing.T) {
 	f := SetupTest()
-	f.redis.
-		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
-		ExpectSlice([]byte("0"), []interface{}{})
+	s := NewTestStart(t)
 
-	err := HandleUpdatePayment(f.service, &nats.Msg{
+	err := s.HandleUpdatePayment(f.service, &nats.Msg{
 		Subject: string(models.UpdatePaymentEvent),
 		Reply:   "",
 		Data:    bsonMarshal(t, models.Payment{}),
@@ -273,18 +289,16 @@ func TestUpdatePayment_NotPresent(t *testing.T) {
 
 func TestUpdatePayment_VersionError(t *testing.T) {
 	f := SetupTest()
-	f.redis.
-		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
-		ExpectSlice([]byte("0"), []interface{}{jsonMarshal(t, models.StoreEvent{
-			EventType: models.UpdatePaymentEvent,
-			Version:   int64(1),
-			Resource:  &models.Payment{},
-		})})
+	s := NewTestStart(t, &Start{
+		scanVersionsKeys: func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID, uint8) (uint8, [][]byte, error) {
+			return 0, [][]byte{[]byte("v/Payment/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000")}, nil
+		},
+	})
 	f.redis.
 		Command("INCR", redigomock.NewAnyData()).
 		ExpectError(errors.New("redis incr error"))
 
-	err := HandleUpdatePayment(f.service, &nats.Msg{
+	err := s.HandleUpdatePayment(f.service, &nats.Msg{
 		Subject: string(models.UpdatePaymentEvent),
 		Reply:   "",
 		Data:    bsonMarshal(t, models.Payment{}),
@@ -296,13 +310,11 @@ func TestUpdatePayment_VersionError(t *testing.T) {
 
 func TestUpdatePayment_SetError(t *testing.T) {
 	f := SetupTest()
-	f.redis.
-		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
-		ExpectSlice([]byte("0"), []interface{}{jsonMarshal(t, models.StoreEvent{
-			EventType: models.UpdatePaymentEvent,
-			Version:   int64(1),
-			Resource:  &models.Payment{},
-		})})
+	s := NewTestStart(t, &Start{
+		scanVersionsKeys: func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID, uint8) (uint8, [][]byte, error) {
+			return 0, [][]byte{[]byte("v/Payment/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000")}, nil
+		},
+	})
 	f.redis.
 		Command("INCR", redigomock.NewAnyData()).
 		Expect(int64(1))
@@ -310,7 +322,7 @@ func TestUpdatePayment_SetError(t *testing.T) {
 		Command("SET", redigomock.NewAnyData(), redigomock.NewAnyData()).
 		ExpectError(errors.New("redis set error"))
 
-	err := HandleUpdatePayment(f.service, &nats.Msg{
+	err := s.HandleUpdatePayment(f.service, &nats.Msg{
 		Subject: string(models.UpdatePaymentEvent),
 		Reply:   "",
 		Data:    bsonMarshal(t, models.Payment{}),
@@ -322,13 +334,11 @@ func TestUpdatePayment_SetError(t *testing.T) {
 
 func TestUpdatePayment_NoReply(t *testing.T) {
 	f := SetupTest()
-	f.redis.
-		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
-		ExpectSlice([]byte("0"), []interface{}{jsonMarshal(t, models.StoreEvent{
-			EventType: models.UpdatePaymentEvent,
-			Version:   int64(1),
-			Resource:  &models.Payment{},
-		})})
+	s := NewTestStart(t, &Start{
+		scanVersionsKeys: func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID, uint8) (uint8, [][]byte, error) {
+			return 0, [][]byte{[]byte("v/Payment/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000")}, nil
+		},
+	})
 	f.redis.
 		Command("INCR", redigomock.NewAnyData()).
 		Expect(int64(1))
@@ -336,7 +346,7 @@ func TestUpdatePayment_NoReply(t *testing.T) {
 		Command("SET", redigomock.NewAnyData(), redigomock.NewAnyData()).
 		Expect("OK")
 
-	err := HandleUpdatePayment(f.service, &nats.Msg{
+	err := s.HandleUpdatePayment(f.service, &nats.Msg{
 		Subject: string(models.UpdatePaymentEvent),
 		Reply:   "",
 		Data:    bsonMarshal(t, models.Payment{}),
@@ -348,13 +358,11 @@ func TestUpdatePayment_NoReply(t *testing.T) {
 
 func TestUpdatePayment_Reply(t *testing.T) {
 	f := SetupTest()
-	f.redis.
-		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
-		ExpectSlice([]byte("0"), []interface{}{jsonMarshal(t, models.StoreEvent{
-			EventType: models.UpdatePaymentEvent,
-			Version:   int64(1),
-			Resource:  &models.Payment{},
-		})})
+	s := NewTestStart(t, &Start{
+		scanVersionsKeys: func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID, uint8) (uint8, [][]byte, error) {
+			return 0, [][]byte{[]byte("v/Payment/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000")}, nil
+		},
+	})
 	f.redis.
 		Command("INCR", redigomock.NewAnyData()).
 		Expect(int64(1))
@@ -365,7 +373,7 @@ func TestUpdatePayment_Reply(t *testing.T) {
 		On("Publish", "reply-inbox", mock.Anything).
 		Return(nil)
 
-	err := HandleUpdatePayment(f.service, &nats.Msg{
+	err := s.HandleUpdatePayment(f.service, &nats.Msg{
 		Subject: string(models.UpdatePaymentEvent),
 		Reply:   "reply-inbox",
 		Data:    bsonMarshal(t, models.Payment{}),
@@ -389,8 +397,9 @@ func TestDeletePayment(t *testing.T) {
 
 func TestDeletePayment_InvalidPayload(t *testing.T) {
 	f := SetupTest()
+	s := NewTestStart(t)
 
-	err := HandleDeletePayment(f.service, &nats.Msg{
+	err := s.HandleDeletePayment(f.service, &nats.Msg{
 		Subject: string(models.DeletePaymentEvent),
 		Reply:   "",
 		Data:    []byte(("not_bson")),
@@ -402,27 +411,27 @@ func TestDeletePayment_InvalidPayload(t *testing.T) {
 
 func TestDeletePayment_ScanError(t *testing.T) {
 	f := SetupTest()
-	f.redis.
-		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
-		ExpectError(errors.New("redis scan error"))
+	s := NewTestStart(t, &Start{
+		scanVersionsKeys: func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID, uint8) (uint8, [][]byte, error) {
+			return 0, nil, errors.New("scan error")
+		},
+	})
 
-	err := HandleDeletePayment(f.service, &nats.Msg{
+	err := s.HandleDeletePayment(f.service, &nats.Msg{
 		Subject: string(models.DeletePaymentEvent),
 		Reply:   "",
 		Data:    bsonMarshal(t, models.ResourceLocator{}),
 		Sub:     nil,
 	})
 
-	require.EqualError(t, errors.Cause(err), "redis scan error")
+	require.EqualError(t, errors.Cause(err), "scan error")
 }
 
 func TestDeletePayment_NotPresent(t *testing.T) {
 	f := SetupTest()
-	f.redis.
-		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
-		ExpectSlice([]byte("0"), []interface{}{})
+	s := NewTestStart(t)
 
-	err := HandleDeletePayment(f.service, &nats.Msg{
+	err := s.HandleDeletePayment(f.service, &nats.Msg{
 		Subject: string(models.DeletePaymentEvent),
 		Reply:   "",
 		Data:    bsonMarshal(t, models.ResourceLocator{}),
@@ -434,18 +443,16 @@ func TestDeletePayment_NotPresent(t *testing.T) {
 
 func TestDeletePayment_VersionError(t *testing.T) {
 	f := SetupTest()
-	f.redis.
-		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
-		ExpectSlice([]byte("0"), []interface{}{jsonMarshal(t, models.StoreEvent{
-			EventType: models.DeletePaymentEvent,
-			Version:   int64(1),
-			Resource:  &models.Payment{},
-		})})
+	s := NewTestStart(t, &Start{
+		scanVersionsKeys: func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID, uint8) (uint8, [][]byte, error) {
+			return 0, [][]byte{[]byte("v/Payment/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000")}, nil
+		},
+	})
 	f.redis.
 		Command("INCR", redigomock.NewAnyData()).
 		ExpectError(errors.New("redis incr error"))
 
-	err := HandleDeletePayment(f.service, &nats.Msg{
+	err := s.HandleDeletePayment(f.service, &nats.Msg{
 		Subject: string(models.DeletePaymentEvent),
 		Reply:   "",
 		Data:    bsonMarshal(t, models.ResourceLocator{}),
@@ -457,13 +464,11 @@ func TestDeletePayment_VersionError(t *testing.T) {
 
 func TestDeletePayment_SetError(t *testing.T) {
 	f := SetupTest()
-	f.redis.
-		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
-		ExpectSlice([]byte("0"), []interface{}{jsonMarshal(t, models.StoreEvent{
-			EventType: models.DeletePaymentEvent,
-			Version:   int64(1),
-			Resource:  &models.Payment{},
-		})})
+	s := NewTestStart(t, &Start{
+		scanVersionsKeys: func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID, uint8) (uint8, [][]byte, error) {
+			return 0, [][]byte{[]byte("v/Payment/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000")}, nil
+		},
+	})
 	f.redis.
 		Command("INCR", redigomock.NewAnyData()).
 		Expect(int64(1))
@@ -471,7 +476,7 @@ func TestDeletePayment_SetError(t *testing.T) {
 		Command("SET", redigomock.NewAnyData(), redigomock.NewAnyData()).
 		ExpectError(errors.New("redis set error"))
 
-	err := HandleDeletePayment(f.service, &nats.Msg{
+	err := s.HandleDeletePayment(f.service, &nats.Msg{
 		Subject: string(models.DeletePaymentEvent),
 		Reply:   "",
 		Data:    bsonMarshal(t, models.ResourceLocator{}),
@@ -483,13 +488,11 @@ func TestDeletePayment_SetError(t *testing.T) {
 
 func TestDeletePayment_NoReply(t *testing.T) {
 	f := SetupTest()
-	f.redis.
-		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
-		ExpectSlice([]byte("0"), []interface{}{jsonMarshal(t, models.StoreEvent{
-			EventType: models.DeletePaymentEvent,
-			Version:   int64(1),
-			Resource:  &models.Payment{},
-		})})
+	s := NewTestStart(t, &Start{
+		scanVersionsKeys: func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID, uint8) (uint8, [][]byte, error) {
+			return 0, [][]byte{[]byte("v/Payment/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000")}, nil
+		},
+	})
 	f.redis.
 		Command("INCR", redigomock.NewAnyData()).
 		Expect(int64(1))
@@ -497,7 +500,7 @@ func TestDeletePayment_NoReply(t *testing.T) {
 		Command("SET", redigomock.NewAnyData(), redigomock.NewAnyData()).
 		Expect("OK")
 
-	err := HandleDeletePayment(f.service, &nats.Msg{
+	err := s.HandleDeletePayment(f.service, &nats.Msg{
 		Subject: string(models.DeletePaymentEvent),
 		Reply:   "",
 		Data:    bsonMarshal(t, models.ResourceLocator{}),
@@ -509,13 +512,11 @@ func TestDeletePayment_NoReply(t *testing.T) {
 
 func TestDeletePayment_Reply(t *testing.T) {
 	f := SetupTest()
-	f.redis.
-		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
-		ExpectSlice([]byte("0"), []interface{}{jsonMarshal(t, models.StoreEvent{
-			EventType: models.DeletePaymentEvent,
-			Version:   int64(1),
-			Resource:  &models.Payment{},
-		})})
+	s := NewTestStart(t, &Start{
+		scanVersionsKeys: func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID, uint8) (uint8, [][]byte, error) {
+			return 0, [][]byte{[]byte("v/Payment/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000")}, nil
+		},
+	})
 	f.redis.
 		Command("INCR", redigomock.NewAnyData()).
 		Expect(int64(1))
@@ -526,7 +527,7 @@ func TestDeletePayment_Reply(t *testing.T) {
 		On("Publish", "reply-inbox", mock.Anything).
 		Return(nil)
 
-	err := HandleDeletePayment(f.service, &nats.Msg{
+	err := s.HandleDeletePayment(f.service, &nats.Msg{
 		Subject: string(models.DeletePaymentEvent),
 		Reply:   "reply-inbox",
 		Data:    bsonMarshal(t, models.ResourceLocator{}),

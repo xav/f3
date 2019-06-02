@@ -30,9 +30,18 @@ import (
 	"gopkg.in/mgo.v2/bson"
 )
 
-type Start struct{}
+type Start struct {
+	scanVersionsKeys func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID, uint8) (uint8, [][]byte, error)
+}
 
 var config = service.Config{}
+
+// NewStart returns a valid Start structure.
+func NewStart() *Start {
+	return &Start{
+		scanVersionsKeys: scanVersionsKeys,
+	}
+}
 
 // Init returns the runnable cobra command.
 func (c *Start) Init() *cobra.Command {
@@ -52,9 +61,9 @@ func (c *Start) Init() *cobra.Command {
 
 func (c *Start) start(cmd *cobra.Command, args []string) {
 	handlers := map[models.EventType]service.MsgHandler{
-		models.CreatePaymentEvent: HandleCreatePayment,
-		models.UpdatePaymentEvent: HandleUpdatePayment,
-		models.DeletePaymentEvent: HandleDeletePayment,
+		models.CreatePaymentEvent: c.HandleCreatePayment,
+		models.UpdatePaymentEvent: c.HandleUpdatePayment,
+		models.DeletePaymentEvent: c.HandleDeletePayment,
 	}
 	s := service.NewService("f3 payment processing", handlers)
 	if err := s.Start(&config); err != nil {
@@ -62,7 +71,7 @@ func (c *Start) start(cmd *cobra.Command, args []string) {
 	}
 }
 
-func HandleCreatePayment(s *service.Service, msg *nats.Msg) error {
+func (c *Start) HandleCreatePayment(s *service.Service, msg *nats.Msg) error {
 	// Decode the event
 	payment := models.Payment{}
 	if err := bson.Unmarshal(msg.Data, &payment); err != nil {
@@ -70,11 +79,11 @@ func HandleCreatePayment(s *service.Service, msg *nats.Msg) error {
 	}
 
 	// Check if the payment is already present
-	_, evts, err := scanResources(s.Redis, models.PaymentResource, payment.OrganisationID, payment.ID, 0)
+	_, keys, err := c.scanVersionsKeys(s.Redis, models.PaymentResource, &payment.OrganisationID, &payment.ID, 0)
 	if err != nil {
 		return errors.Wrap(err, "failed to check existing payments")
 	}
-	if len(evts) > 0 {
+	if len(keys) > 0 {
 		return errors.New("payment id already present in store")
 	}
 
@@ -86,7 +95,7 @@ func HandleCreatePayment(s *service.Service, msg *nats.Msg) error {
 	}
 
 	// Save the event to the store
-	bytes, err := json.Marshal(models.StoreEvent{
+	bytes, err := json.Marshal(models.Event{
 		EventType: models.CreatePaymentEvent,
 		Version:   version.(int64),
 		CreatedAt: time.Now().Unix(),
@@ -112,7 +121,7 @@ func HandleCreatePayment(s *service.Service, msg *nats.Msg) error {
 	return nil
 }
 
-func HandleUpdatePayment(s *service.Service, msg *nats.Msg) error {
+func (c *Start) HandleUpdatePayment(s *service.Service, msg *nats.Msg) error {
 	// Decode the event
 	payment := models.Payment{}
 	if err := bson.Unmarshal(msg.Data, &payment); err != nil {
@@ -120,11 +129,11 @@ func HandleUpdatePayment(s *service.Service, msg *nats.Msg) error {
 	}
 
 	// Check if the payment is already present
-	_, evts, err := scanResources(s.Redis, models.PaymentResource, payment.OrganisationID, payment.ID, 0)
+	_, keys, err := c.scanVersionsKeys(s.Redis, models.PaymentResource, &payment.OrganisationID, &payment.ID, 0)
 	if err != nil {
 		return errors.Wrap(err, "failed to check existing payments")
 	}
-	if len(evts) == 0 {
+	if len(keys) == 0 {
 		return errors.New("payment id was not found in store")
 	}
 
@@ -136,7 +145,7 @@ func HandleUpdatePayment(s *service.Service, msg *nats.Msg) error {
 	}
 
 	// Save the event to the store
-	bytes, err := json.Marshal(models.StoreEvent{
+	bytes, err := json.Marshal(models.Event{
 		EventType: models.UpdatePaymentEvent,
 		Version:   version.(int64),
 		CreatedAt: time.Now().Unix(),
@@ -162,7 +171,7 @@ func HandleUpdatePayment(s *service.Service, msg *nats.Msg) error {
 	return nil
 }
 
-func HandleDeletePayment(s *service.Service, msg *nats.Msg) error {
+func (c *Start) HandleDeletePayment(s *service.Service, msg *nats.Msg) error {
 	// Decode the event
 	locator := models.ResourceLocator{}
 	if err := bson.Unmarshal(msg.Data, &locator); err != nil {
@@ -170,11 +179,11 @@ func HandleDeletePayment(s *service.Service, msg *nats.Msg) error {
 	}
 
 	// Check if the payment is already present
-	_, evts, err := scanResources(s.Redis, models.PaymentResource, locator.OrganisationID, locator.ID, 0)
+	_, keys, err := c.scanVersionsKeys(s.Redis, models.PaymentResource, locator.OrganisationID, locator.ID, 0)
 	if err != nil {
 		return errors.Wrap(err, "failed to check existing payments")
 	}
-	if len(evts) == 0 {
+	if len(keys) == 0 {
 		return errors.New("payment id was not found in store")
 	}
 
@@ -186,7 +195,7 @@ func HandleDeletePayment(s *service.Service, msg *nats.Msg) error {
 	}
 
 	// Save the event to the store
-	bytes, err := json.Marshal(models.StoreEvent{
+	bytes, err := json.Marshal(models.Event{
 		EventType: models.DeletePaymentEvent,
 		Version:   version.(int64),
 		CreatedAt: time.Now().Unix(),
@@ -212,19 +221,26 @@ func HandleDeletePayment(s *service.Service, msg *nats.Msg) error {
 	return nil
 }
 
-func scanResources(rc redis.Conn, resourceType models.ResourceType, organizationID uuid.UUID, resourceID uuid.UUID, cursor uint8) (uint8, [][]byte, error) {
-	var (
-		items   = make([][]byte, 0)
-		scanKey = fmt.Sprintf(models.EventKeyScanTemplate, resourceType, organizationID, resourceID)
-	)
+// scanVersionsKeys returns a batch of locators keys for the specified locator.
+func scanVersionsKeys(rc redis.Conn, resourceType models.ResourceType, organizationID *uuid.UUID, resourceID *uuid.UUID, cursor uint8) (uint8, [][]byte, error) {
+	scanKey := fmt.Sprintf(models.VersionKeyTemplate, resourceType, scanId(organizationID), scanId(resourceID))
+	items := make([][]byte, 0)
 
-	existing, err := redis.Values(rc.Do("SCAN", cursor, "MATCH", scanKey))
+	versions, err := redis.Values(rc.Do("SCAN", cursor, "MATCH", scanKey))
 	if err != nil {
 		return 0, nil, errors.Wrapf(err, "failed to scan '%v' resources '%v/%v'", resourceType, organizationID, resourceID)
 	}
-	if _, err := redis.Scan(existing, &cursor, &items); err != nil {
-		return 0, nil, errors.Wrap(err, "failed to parse resources list")
+	if _, err := redis.Scan(versions, &cursor, &items); err != nil {
+		return 0, nil, errors.Wrap(err, "failed to parse versions scan")
 	}
 
 	return cursor, items, nil
+}
+
+// scanId returns the valud of the id if present, or a scan wildcard if nil
+func scanId(id *uuid.UUID) string {
+	if id == nil {
+		return "*"
+	}
+	return id.String()
 }
