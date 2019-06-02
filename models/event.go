@@ -51,3 +51,12 @@ type PaymentEvent struct {
 	UpdatedAt *int64    `json:"updated_at" bson:"updated_at"`
 	Resource  *Payment  `json:"resource"   bson:"resource"`
 }
+
+// LocatorEvent is a specialisation of Event used for bson deserialization
+type LocatorEvent struct {
+	EventType EventType        `json:"event_type" bson:"event_type"`
+	Version   int64            `json:"version"    bson:"version"`
+	CreatedAt int64            `json:"created_at" bson:"created_at"`
+	UpdatedAt *int64           `json:"updated_at" bson:"updated_at"`
+	Resource  *ResourceLocator `json:"resource"   bson:"resource"`
+}
