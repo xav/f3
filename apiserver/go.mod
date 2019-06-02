@@ -13,6 +13,7 @@ require (
 	github.com/spf13/cobra v0.0.4
 	github.com/stretchr/testify v1.3.0
 	github.com/xav/f3/f3nats v0.0.0-20190602215447-30d98aed83c2
-	github.com/xav/f3/models v0.0.0-20190602215447-30d98aed83c2
+	github.com/xav/f3/models v0.0.0-20190602232305-b7120e879047
+	golang.org/x/net v0.0.0-20190522155817-f3200d17e092 // indirect
 	gopkg.in/mgo.v2 v2.0.0-20180705113604-9856a29383ce
 )

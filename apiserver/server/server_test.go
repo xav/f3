@@ -191,6 +191,99 @@ func SetupAPIServerTest(t *testing.T) *APIServerTestFixture {
 
 ////////////////////////////////////////
 
+func TestListPayment(t *testing.T) {
+	t.Run("list payments is successful", TestListPayment_Success)
+	t.Run("query service failed to process the list request", TestListPayment_ServiceError)
+	t.Run("list payment where nats request fails", TestListPayment_QueueError)
+	t.Run("list payment where the event type of the reply is not recognised", TestListPayment_UnrecognisedResponse)
+}
+
+func TestListPayment_Success(t *testing.T) {
+	f := SetupAPIServerTest(t)
+	req := httptest.NewRequest("GET", "/v1", nil)
+
+	data := bsonMarshal(t, models.Event{
+		EventType: models.ResourceFoundEvent,
+		Resource:  []*models.Payment{{}, {}},
+	})
+	f.nats.
+		On("Request", string(models.ListPaymentEvent), mock.Anything, mock.Anything).
+		Return(&nats.Msg{
+			Subject: "reply",
+			Reply:   "",
+			Data:    data,
+			Sub:     nil,
+		}, nil)
+
+	f.server.Router.ServeHTTP(f.rr, req)
+	assert.Equal(t, http.StatusOK, f.rr.Code)
+}
+
+func TestListPayment_ServiceError(t *testing.T) {
+	f := SetupAPIServerTest(t)
+	req := httptest.NewRequest("GET", "/v1", nil)
+
+	data := bsonMarshal(t, models.Event{
+		EventType: models.ServiceErrorEvent,
+		Resource: models.ServiceError{
+			Cause:   "service error",
+			Request: nil,
+		},
+	})
+	f.nats.
+		On("Request", string(models.ListPaymentEvent), mock.Anything, mock.Anything).
+		Return(&nats.Msg{
+			Subject: "reply",
+			Reply:   "",
+			Data:    data,
+			Sub:     nil,
+		}, nil)
+
+	f.server.Router.ServeHTTP(f.rr, req)
+	assert.Equal(t, http.StatusInternalServerError, f.rr.Code)
+	assert.Equal(t, "service error\n", f.rr.Body.String())
+}
+
+func TestListPayment_QueueError(t *testing.T) {
+	f := SetupAPIServerTest(t)
+	req := httptest.NewRequest("GET", "/v1", nil)
+
+	f.nats.
+		On("Request", string(models.ListPaymentEvent), mock.Anything, mock.Anything).
+		Return(nil, errors.New("queue error"))
+
+	f.server.Router.ServeHTTP(f.rr, req)
+	assert.Equal(t, http.StatusInternalServerError, f.rr.Code)
+}
+
+func TestListPayment_UnrecognisedResponse(t *testing.T) {
+	f := SetupAPIServerTest(t)
+	req := httptest.NewRequest("GET", "/v1", nil)
+
+	updateDate := int64(1445444940)
+	data := bsonMarshal(t, models.Event{
+		EventType: "waif",
+		Version:   2,
+		CreatedAt: 499137600,
+		UpdatedAt: &updateDate,
+		Resource:  &models.Payment{},
+	})
+	f.nats.
+		On("Request", string(models.ListPaymentEvent), mock.Anything, mock.Anything).
+		Return(&nats.Msg{
+			Subject: "reply",
+			Reply:   "",
+			Data:    data,
+			Sub:     nil,
+		}, nil)
+
+	f.server.Router.ServeHTTP(f.rr, req)
+	assert.Equal(t, http.StatusInternalServerError, f.rr.Code)
+	assert.Equal(t, "unrecognised response to fetch request: 'waif'\n", f.rr.Body.String())
+}
+
+////////////////////////////////////////
+
 func TestCreatePayment(t *testing.T) {
 	t.Run("create payment is handled successfully", TestCreatePayment_Success)
 	t.Run("create payment with invalid json input", TestCreatePayment_BadInput)

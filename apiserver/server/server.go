@@ -167,13 +167,32 @@ func (s *Server) ListPayments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = s.Nats.Request(string(models.ListPaymentEvent), data, 10*time.Millisecond)
+	reply, err := s.Nats.Request(string(models.ListPaymentEvent), data, 10*time.Millisecond)
 	if err != nil {
-		log.WithError(err).Error("fetch request event failed")
+		log.WithError(err).Error("list request event failed")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	replyEvent := models.PaymentListEvent{}
+	if err := bson.Unmarshal(reply.Data, &replyEvent); err != nil {
+		log.WithError(err).Error("failed to decode reply data")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	switch replyEvent.EventType {
+	case models.ResourceFoundEvent:
+		render.DefaultResponder(w, r, replyEvent.Resource)
+	case models.ServiceErrorEvent:
+		replyEvent := models.Event{}
+		_ = bson.Unmarshal(reply.Data, &replyEvent)
+		cause := replyEvent.Resource.(bson.M)["cause"].(string)
+		http.Error(w, fmt.Sprintf(cause), http.StatusInternalServerError)
+	default:
+		log.Errorf("unrecognised response to list request: '%v'", replyEvent.EventType)
+		http.Error(w, fmt.Sprintf("unrecognised response to list request: '%v'", replyEvent.EventType), http.StatusInternalServerError)
+	}
 }
 
 func (s *Server) CreatePayment(w http.ResponseWriter, r *http.Request) {
