@@ -32,13 +32,13 @@ jobs:
           keys:
             - v1-pkg-cache
 
-      - run: go get -v -t -d ./apiservice/...
+      - run: go get -v -t -d ./apiserver/...
 
       - run:
           name: Run unit tests
           # Store the results of our tests in the /tmp/artifacts directory
           command: |
-            go test ./apiservice/...
+            go test ./apiserver/...
 
       # - run: make # pull and build dependencies for the project
 
