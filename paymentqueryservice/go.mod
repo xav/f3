@@ -15,6 +15,6 @@ require (
 	github.com/stretchr/testify v1.3.0
 	github.com/xav/f3/f3nats v0.0.0-20190602215447-30d98aed83c2
 	github.com/xav/f3/models v0.0.0-20190602215447-30d98aed83c2
-	github.com/xav/f3/service v0.0.0-20190602215447-30d98aed83c2
+	github.com/xav/f3/service v0.0.0-20190602223536-526e5b4b49fd
 	gopkg.in/mgo.v2 v2.0.0-20180705113604-9856a29383ce
 )

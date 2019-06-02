@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/apex/log"
 	"github.com/gomodule/redigo/redis"
@@ -27,7 +26,6 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
-	"github.com/xav/f3/f3nats"
 	"github.com/xav/f3/models"
 	"github.com/xav/f3/service"
 	"gopkg.in/mgo.v2/bson"
@@ -86,19 +84,19 @@ func (c *Start) HandleFetchPayment(s *service.Service, msg *nats.Msg) error {
 	// Decode the event
 	locator := models.ResourceLocator{}
 	if err := bson.Unmarshal(msg.Data, &locator); err != nil {
-		return replyWithError(s.Nats, msg, err, "failed to unmarshal create event locator")
+		return s.ReplyWithError(msg, err, "failed to unmarshal create event locator")
 	}
 
 	// Get payment resource history
 	evts, err := c.fetchEvents(s.Redis, models.PaymentResource, locator.OrganisationID, locator.ID)
 	if err != nil {
-		return replyWithError(s.Nats, msg, err, fmt.Sprintf("failed to fetch payment events for '%v / %v'", locator.OrganisationID, locator.ID))
+		return s.ReplyWithError(msg, err, fmt.Sprintf("failed to fetch payment events for '%v / %v'", locator.OrganisationID, locator.ID))
 	}
 
 	// Apply the events
 	evt, err := c.buildPaymentFromEvents(evts)
 	if err != nil {
-		return replyWithError(s.Nats, msg, err, fmt.Sprintf("failed to build payment from events for '%v / %v'", locator.OrganisationID, locator.ID))
+		return s.ReplyWithError(msg, err, fmt.Sprintf("failed to build payment from events for '%v / %v'", locator.OrganisationID, locator.ID))
 	}
 
 	// Publish the result on the reply subject
@@ -107,7 +105,7 @@ func (c *Start) HandleFetchPayment(s *service.Service, msg *nats.Msg) error {
 		return errors.Wrap(err, "failed to encode fetch request reply")
 	}
 	if err := s.Nats.Publish(msg.Reply, data); err != nil {
-		return replyWithError(s.Nats, msg, err, fmt.Sprintf("failed to post fetch request reply to '%v'", msg.Reply))
+		return s.ReplyWithError(msg, err, fmt.Sprintf("failed to post fetch request reply to '%v'", msg.Reply))
 	}
 
 	log.Infof("fetched payment '%v / %v'", locator.OrganisationID, locator.ID)
@@ -123,13 +121,13 @@ func (c *Start) HandleListPayment(s *service.Service, msg *nats.Msg) error {
 	// Decode the event
 	locator := models.ResourceLocator{}
 	if err := bson.Unmarshal(msg.Data, &locator); err != nil {
-		return replyWithError(s.Nats, msg, err, "failed to unmarshal create event locator")
+		return s.ReplyWithError(msg, err, "failed to unmarshal create event locator")
 	}
 
 	// Get locators list
 	locators, err := c.fetchLocators(s.Redis, models.PaymentResource, locator.OrganisationID, locator.ID)
 	if err != nil {
-		return replyWithError(s.Nats, msg, err, fmt.Sprintf("failed to fetch payment locators for '%v / %v'", scanId(locator.OrganisationID), scanId(locator.ID)))
+		return s.ReplyWithError(msg, err, fmt.Sprintf("failed to fetch payment locators for '%v / %v'", scanId(locator.OrganisationID), scanId(locator.ID)))
 	}
 
 	// Fetch the payments
@@ -138,13 +136,13 @@ func (c *Start) HandleListPayment(s *service.Service, msg *nats.Msg) error {
 		// Get payment resource history
 		evts, err := c.fetchEvents(s.Redis, models.PaymentResource, locator.OrganisationID, locator.ID)
 		if err != nil {
-			return replyWithError(s.Nats, msg, err, fmt.Sprintf("failed to fetch payment events for '%v / %v'", locator.OrganisationID, locator.ID))
+			return s.ReplyWithError(msg, err, fmt.Sprintf("failed to fetch payment events for '%v / %v'", locator.OrganisationID, locator.ID))
 		}
 
 		// Apply the events
 		evt, err := c.buildPaymentFromEvents(evts)
 		if err != nil {
-			return replyWithError(s.Nats, msg, err, fmt.Sprintf("failed to build payment from events for '%v / %v'", locator.OrganisationID, locator.ID))
+			return s.ReplyWithError(msg, err, fmt.Sprintf("failed to build payment from events for '%v / %v'", locator.OrganisationID, locator.ID))
 		}
 
 		switch evt.EventType {
@@ -166,7 +164,7 @@ func (c *Start) HandleListPayment(s *service.Service, msg *nats.Msg) error {
 		return errors.Wrap(err, "failed to encode list request reply")
 	}
 	if err := s.Nats.Publish(msg.Reply, data); err != nil {
-		return replyWithError(s.Nats, msg, err, fmt.Sprintf("failed to post list request reply to '%v'", msg.Reply))
+		return s.ReplyWithError(msg, err, fmt.Sprintf("failed to post list request reply to '%v'", msg.Reply))
 	}
 
 	log.Infof("listed payments '%v / %v'", scanId(locator.OrganisationID), scanId(locator.ID))
@@ -352,41 +350,10 @@ func scanVersionsKeys(rc redis.Conn, resourceType models.ResourceType, organizat
 	return cursor, items, nil
 }
 
-// scanId returns the valud of the id if present, or a scan wildcard if nil
+// scanId returns the value of the id if present, or a scan wildcard if nil
 func scanId(id *uuid.UUID) string {
 	if id == nil {
 		return "*"
 	}
 	return id.String()
-}
-
-// replyWithError publish the error to the reply channel and returns the wrapped error.
-func replyWithError(conn f3nats.NatsConn, request *nats.Msg, err error, msg string) error {
-	if request == nil {
-		log.Error("request cannot be nil for reply")
-		return errors.WithMessage(errors.Wrap(err, msg), "request cannot be mil for error reply")
-	}
-
-	ev := models.Event{
-		EventType: models.ServiceErrorEvent,
-		Version:   0,
-		CreatedAt: time.Now().Unix(),
-		Resource: &models.ServiceError{
-			Cause:   msg,
-			Request: request,
-		},
-	}
-
-	if data, err := bson.Marshal(ev); err != nil {
-		log.Errorf("failed to marshal service error (%v)", msg)
-		if err := conn.Publish(request.Reply, []byte(msg)); err != nil {
-			log.Errorf("failed to post error reply to '%v'", request.Reply)
-		}
-	} else {
-		if err := conn.Publish(request.Reply, data); err != nil {
-			log.Errorf("failed to post error reply to '%v'", request.Reply)
-		}
-	}
-
-	return errors.Wrap(err, msg)
 }
