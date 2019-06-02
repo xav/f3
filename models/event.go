@@ -17,6 +17,8 @@ package models
 type EventType string
 
 const (
+	ServiceErrorEvent EventType = "service:error"
+
 	ResourceFoundEvent    EventType = "resource:found"
 	ResourceNotFoundEvent EventType = "resource:notfound"
 
