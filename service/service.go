@@ -131,25 +131,27 @@ func (s *Service) ReplyWithError(request *nats.Msg, err error, msg string) error
 		return errors.WithMessage(errors.Wrap(err, msg), "request cannot be mil for error reply")
 	}
 
-	ev := models.Event{
-		EventType: models.ServiceErrorEvent,
-		Version:   0,
-		CreatedAt: time.Now().Unix(),
-		Resource: &models.ServiceError{
-			Cause:   msg,
-			Request: request,
-		},
-	}
-
-	if data, err := bson.Marshal(ev); err != nil {
-		log.Errorf("failed to marshal service error (%v)", msg)
-		if err := s.Nats.Publish(request.Reply, []byte(msg)); err != nil {
-			log.Errorf("failed to post error reply to '%v'", request.Reply)
+	if request.Reply != "" {
+		ev := models.Event{
+			EventType: models.ServiceErrorEvent,
+			Version:   0,
+			CreatedAt: time.Now().Unix(),
+			Resource: &models.ServiceError{
+				Cause:   msg,
+				Request: request,
+			},
 		}
-	} else {
+
+		data, err := bson.Marshal(ev)
+		if err != nil {
+			log.Errorf("failed to marshal service error (%v)", msg)
+			return errors.Wrap(err, msg)
+		}
+
 		if err := s.Nats.Publish(request.Reply, data); err != nil {
 			log.Errorf("failed to post error reply to '%v'", request.Reply)
 		}
+
 	}
 
 	return errors.Wrap(err, msg)
