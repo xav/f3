@@ -56,7 +56,8 @@ type PaymentServiceTestFixture struct {
 	service *service.Service
 }
 
-func SetupTest() *PaymentServiceTestFixture {
+func SetupTest(t *testing.T) *PaymentServiceTestFixture {
+	t.Helper()
 	f := &PaymentServiceTestFixture{
 		nats:    &mocks.NatsConn{},
 		redis:   redigomock.NewConn(),
@@ -100,7 +101,7 @@ func TestCreatePayment(t *testing.T) {
 }
 
 func TestCreatePayment_InvalidPayload(t *testing.T) {
-	f := SetupTest()
+	f := SetupTest(t)
 	s := NewTestStart(t)
 
 	err := s.HandleCreatePayment(f.service, &nats.Msg{
@@ -114,7 +115,7 @@ func TestCreatePayment_InvalidPayload(t *testing.T) {
 }
 
 func TestCreatePayment_ScanError(t *testing.T) {
-	f := SetupTest()
+	f := SetupTest(t)
 	s := NewTestStart(t, &Start{
 		scanVersionsKeys: func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID, uint8) (uint8, [][]byte, error) {
 			return 0, nil, errors.New("scan error")
@@ -132,7 +133,7 @@ func TestCreatePayment_ScanError(t *testing.T) {
 }
 
 func TestCreatePayment_AlreadyPresent(t *testing.T) {
-	f := SetupTest()
+	f := SetupTest(t)
 	s := NewTestStart(t, &Start{
 		scanVersionsKeys: func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID, uint8) (uint8, [][]byte, error) {
 			return 0, [][]byte{[]byte("v/Payment/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000")}, nil
@@ -150,7 +151,7 @@ func TestCreatePayment_AlreadyPresent(t *testing.T) {
 }
 
 func TestCreatePayment_VersionError(t *testing.T) {
-	f := SetupTest()
+	f := SetupTest(t)
 	s := NewTestStart(t)
 	f.redis.
 		Command("INCR", redigomock.NewAnyData()).
@@ -167,7 +168,7 @@ func TestCreatePayment_VersionError(t *testing.T) {
 }
 
 func TestCreatePayment_SetError(t *testing.T) {
-	f := SetupTest()
+	f := SetupTest(t)
 	s := NewTestStart(t)
 	f.redis.
 		Command("INCR", redigomock.NewAnyData()).
@@ -187,7 +188,7 @@ func TestCreatePayment_SetError(t *testing.T) {
 }
 
 func TestCreatePayment_NoReply(t *testing.T) {
-	f := SetupTest()
+	f := SetupTest(t)
 	s := NewTestStart(t)
 	f.redis.
 		Command("INCR", redigomock.NewAnyData()).
@@ -207,7 +208,7 @@ func TestCreatePayment_NoReply(t *testing.T) {
 }
 
 func TestCreatePayment_Reply(t *testing.T) {
-	f := SetupTest()
+	f := SetupTest(t)
 	s := NewTestStart(t)
 	f.redis.
 		Command("INCR", redigomock.NewAnyData()).
@@ -242,7 +243,7 @@ func TestUpdatePayment(t *testing.T) {
 }
 
 func TestUpdatePayment_InvalidPayload(t *testing.T) {
-	f := SetupTest()
+	f := SetupTest(t)
 	s := NewTestStart(t)
 
 	err := s.HandleUpdatePayment(f.service, &nats.Msg{
@@ -256,7 +257,7 @@ func TestUpdatePayment_InvalidPayload(t *testing.T) {
 }
 
 func TestUpdatePayment_ScanError(t *testing.T) {
-	f := SetupTest()
+	f := SetupTest(t)
 	s := NewTestStart(t, &Start{
 		scanVersionsKeys: func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID, uint8) (uint8, [][]byte, error) {
 			return 0, nil, errors.New("scan error")
@@ -274,7 +275,7 @@ func TestUpdatePayment_ScanError(t *testing.T) {
 }
 
 func TestUpdatePayment_NotPresent(t *testing.T) {
-	f := SetupTest()
+	f := SetupTest(t)
 	s := NewTestStart(t)
 
 	err := s.HandleUpdatePayment(f.service, &nats.Msg{
@@ -288,7 +289,7 @@ func TestUpdatePayment_NotPresent(t *testing.T) {
 }
 
 func TestUpdatePayment_VersionError(t *testing.T) {
-	f := SetupTest()
+	f := SetupTest(t)
 	s := NewTestStart(t, &Start{
 		scanVersionsKeys: func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID, uint8) (uint8, [][]byte, error) {
 			return 0, [][]byte{[]byte("v/Payment/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000")}, nil
@@ -309,7 +310,7 @@ func TestUpdatePayment_VersionError(t *testing.T) {
 }
 
 func TestUpdatePayment_SetError(t *testing.T) {
-	f := SetupTest()
+	f := SetupTest(t)
 	s := NewTestStart(t, &Start{
 		scanVersionsKeys: func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID, uint8) (uint8, [][]byte, error) {
 			return 0, [][]byte{[]byte("v/Payment/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000")}, nil
@@ -333,7 +334,7 @@ func TestUpdatePayment_SetError(t *testing.T) {
 }
 
 func TestUpdatePayment_NoReply(t *testing.T) {
-	f := SetupTest()
+	f := SetupTest(t)
 	s := NewTestStart(t, &Start{
 		scanVersionsKeys: func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID, uint8) (uint8, [][]byte, error) {
 			return 0, [][]byte{[]byte("v/Payment/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000")}, nil
@@ -357,7 +358,7 @@ func TestUpdatePayment_NoReply(t *testing.T) {
 }
 
 func TestUpdatePayment_Reply(t *testing.T) {
-	f := SetupTest()
+	f := SetupTest(t)
 	s := NewTestStart(t, &Start{
 		scanVersionsKeys: func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID, uint8) (uint8, [][]byte, error) {
 			return 0, [][]byte{[]byte("v/Payment/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000")}, nil
@@ -396,7 +397,7 @@ func TestDeletePayment(t *testing.T) {
 }
 
 func TestDeletePayment_InvalidPayload(t *testing.T) {
-	f := SetupTest()
+	f := SetupTest(t)
 	s := NewTestStart(t)
 
 	err := s.HandleDeletePayment(f.service, &nats.Msg{
@@ -410,7 +411,7 @@ func TestDeletePayment_InvalidPayload(t *testing.T) {
 }
 
 func TestDeletePayment_ScanError(t *testing.T) {
-	f := SetupTest()
+	f := SetupTest(t)
 	s := NewTestStart(t, &Start{
 		scanVersionsKeys: func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID, uint8) (uint8, [][]byte, error) {
 			return 0, nil, errors.New("scan error")
@@ -428,7 +429,7 @@ func TestDeletePayment_ScanError(t *testing.T) {
 }
 
 func TestDeletePayment_NotPresent(t *testing.T) {
-	f := SetupTest()
+	f := SetupTest(t)
 	s := NewTestStart(t)
 
 	err := s.HandleDeletePayment(f.service, &nats.Msg{
@@ -442,7 +443,7 @@ func TestDeletePayment_NotPresent(t *testing.T) {
 }
 
 func TestDeletePayment_VersionError(t *testing.T) {
-	f := SetupTest()
+	f := SetupTest(t)
 	s := NewTestStart(t, &Start{
 		scanVersionsKeys: func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID, uint8) (uint8, [][]byte, error) {
 			return 0, [][]byte{[]byte("v/Payment/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000")}, nil
@@ -463,7 +464,7 @@ func TestDeletePayment_VersionError(t *testing.T) {
 }
 
 func TestDeletePayment_SetError(t *testing.T) {
-	f := SetupTest()
+	f := SetupTest(t)
 	s := NewTestStart(t, &Start{
 		scanVersionsKeys: func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID, uint8) (uint8, [][]byte, error) {
 			return 0, [][]byte{[]byte("v/Payment/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000")}, nil
@@ -487,7 +488,7 @@ func TestDeletePayment_SetError(t *testing.T) {
 }
 
 func TestDeletePayment_NoReply(t *testing.T) {
-	f := SetupTest()
+	f := SetupTest(t)
 	s := NewTestStart(t, &Start{
 		scanVersionsKeys: func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID, uint8) (uint8, [][]byte, error) {
 			return 0, [][]byte{[]byte("v/Payment/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000")}, nil
@@ -511,7 +512,7 @@ func TestDeletePayment_NoReply(t *testing.T) {
 }
 
 func TestDeletePayment_Reply(t *testing.T) {
-	f := SetupTest()
+	f := SetupTest(t)
 	s := NewTestStart(t, &Start{
 		scanVersionsKeys: func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID, uint8) (uint8, [][]byte, error) {
 			return 0, [][]byte{[]byte("v/Payment/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000")}, nil
