@@ -21,35 +21,33 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/pkg/errors"
 	"github.com/rafaeljusto/redigomock"
-	"github.com/smartystreets/gunit"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/xav/f3/f3nats"
 	"github.com/xav/f3/f3nats/mocks"
 	"github.com/xav/f3/models"
 )
 
-func TestServiceFixture(t *testing.T) {
-	gunit.Run(new(ServiceFixture), t)
-}
-
-type ServiceFixture struct {
-	*gunit.Fixture
+type ServiceTestFixture struct {
 	nats  *mocks.NatsConn
 	redis *redigomock.Conn
 }
 
-func (f *ServiceFixture) Setup() {
-	f.nats = &mocks.NatsConn{}
-	f.redis = redigomock.NewConn()
+func SetupTest(t *testing.T) *ServiceTestFixture {
+	t.Helper()
+	return &ServiceTestFixture{
+		nats:  &mocks.NatsConn{},
+		redis: redigomock.NewConn(),
+	}
 }
 
-func (f *ServiceFixture) fakePreRun(s *Service, config *Config) error {
+func (f *ServiceTestFixture) fakePreRun(s *Service, config *Config) error {
 	s.Nats = f.nats
 	s.Redis = f.redis
 	return nil
 }
 
-func (f *ServiceFixture) fakeSubscribe(s *Service, event models.EventType, handler MsgHandler) (f3nats.NatsSubscription, error) {
+func (f *ServiceTestFixture) fakeSubscribe(s *Service, event models.EventType, handler MsgHandler) (f3nats.NatsSubscription, error) {
 	_, err := subscribe(s, event, handler)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to subscribe to '%v'", event)
@@ -58,27 +56,28 @@ func (f *ServiceFixture) fakeSubscribe(s *Service, event models.EventType, handl
 	return &mocks.NatsSubscription{}, nil
 }
 
-func (f *ServiceFixture) TestNewService_NoHandlers() {
+func TestNewService_NoHandlers(t *testing.T) {
 	service := NewService("client id")
-	f.Assert(len(service.Handlers) == 0)
+	assert.Len(t, service.Handlers, 0)
 }
 
-func (f *ServiceFixture) TestNewService_Handlers() {
+func TestNewService_Handlers(t *testing.T) {
 	handlers := map[models.EventType]MsgHandler{
 		models.CreatePaymentEvent: func(s *Service, msg *nats.Msg) error { return nil },
 		models.UpdatePaymentEvent: func(s *Service, msg *nats.Msg) error { return nil },
 	}
 	service := NewService("client id", handlers)
-	f.Assert(len(service.Handlers) == 2)
+	assert.Len(t, service.Handlers, 2)
 }
 
-func (f *ServiceFixture) TestStartService_NoHandlers() {
+func TestStartService_NoHandlers(t *testing.T) {
+	f := SetupTest(t)
 	service := NewService("test client")
 	service.PreRun = []func(*Service, *Config) error{f.fakePreRun}
 
 	go func() { _ = service.Start(&Config{}) }()
 	<-serviceStarted
-	f.Assert(len(service.subscriptions) == 0)
+	assert.Len(t, service.subscriptions, 0)
 
 	f.nats.On("Close")
 	stopChan <- syscall.SIGINT
@@ -86,7 +85,8 @@ func (f *ServiceFixture) TestStartService_NoHandlers() {
 	<-serviceStopped
 }
 
-func (f *ServiceFixture) TestStartService_Handlers() {
+func TestStartService_Handlers(t *testing.T) {
+	f := SetupTest(t)
 	handlers := map[models.EventType]MsgHandler{
 		models.CreatePaymentEvent: func(s *Service, msg *nats.Msg) error { return nil },
 		models.UpdatePaymentEvent: func(s *Service, msg *nats.Msg) error { return nil },
@@ -102,7 +102,7 @@ func (f *ServiceFixture) TestStartService_Handlers() {
 
 	go func() { _ = service.Start(&Config{}) }()
 	<-serviceStarted
-	f.Assert(len(service.subscriptions) == 2)
+	assert.Len(t, service.subscriptions, 2)
 
 	for _, v := range service.subscriptions {
 		sub := v.(*mocks.NatsSubscription)
@@ -118,7 +118,8 @@ func (f *ServiceFixture) TestStartService_Handlers() {
 	<-serviceStopped
 }
 
-func (f *ServiceFixture) TestStartService_Handlers_SubscribeFailed() {
+func TestStartService_Handlers_SubscribeFailed(t *testing.T) {
+	f := SetupTest(t)
 	handlers := map[models.EventType]MsgHandler{
 		models.CreatePaymentEvent: func(s *Service, msg *nats.Msg) error { return nil },
 		models.UpdatePaymentEvent: func(s *Service, msg *nats.Msg) error { return nil },
@@ -138,7 +139,8 @@ func (f *ServiceFixture) TestStartService_Handlers_SubscribeFailed() {
 	<-serviceFailed
 }
 
-func (f *ServiceFixture) TestStartService_PreRunFailed() {
+func TestStartService_PreRunFailed(t *testing.T) {
+	f := SetupTest(t)
 	handlers := map[models.EventType]MsgHandler{
 		models.CreatePaymentEvent: func(s *Service, msg *nats.Msg) error { return nil },
 		models.UpdatePaymentEvent: func(s *Service, msg *nats.Msg) error { return nil },

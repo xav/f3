@@ -25,6 +25,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/xav/f3/f3nats"
 	"github.com/xav/f3/models"
+	"gopkg.in/mgo.v2/bson"
 )
 
 type Config struct {
@@ -121,6 +122,37 @@ func (s *Service) Start(config *Config) error {
 	serviceStopped <- true
 
 	return nil
+}
+
+// ReplyWithError publish the error to the reply channel and returns the wrapped error.
+func (s *Service) ReplyWithError(request *nats.Msg, err error, msg string) error {
+	if request == nil {
+		log.Error("request cannot be nil for reply")
+		return errors.WithMessage(errors.Wrap(err, msg), "request cannot be mil for error reply")
+	}
+
+	ev := models.Event{
+		EventType: models.ServiceErrorEvent,
+		Version:   0,
+		CreatedAt: time.Now().Unix(),
+		Resource: &models.ServiceError{
+			Cause:   msg,
+			Request: request,
+		},
+	}
+
+	if data, err := bson.Marshal(ev); err != nil {
+		log.Errorf("failed to marshal service error (%v)", msg)
+		if err := s.Nats.Publish(request.Reply, []byte(msg)); err != nil {
+			log.Errorf("failed to post error reply to '%v'", request.Reply)
+		}
+	} else {
+		if err := s.Nats.Publish(request.Reply, data); err != nil {
+			log.Errorf("failed to post error reply to '%v'", request.Reply)
+		}
+	}
+
+	return errors.Wrap(err, msg)
 }
 
 func (s *Service) close() {
