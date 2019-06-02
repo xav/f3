@@ -17,6 +17,9 @@ package models
 type EventType string
 
 const (
+	ResourceFoundEvent    EventType = "resource:found"
+	ResourceNotFoundEvent EventType = "resource:notfound"
+
 	CreatePaymentEvent EventType = "payment:create"
 	UpdatePaymentEvent EventType = "payment:update"
 	DeletePaymentEvent EventType = "payment:delete"
@@ -24,20 +27,17 @@ const (
 	FetchPaymentEvent EventType = "payment:fetch"
 	ListPaymentEvent  EventType = "payment:list"
 	DumpPaymentEvent  EventType = "payment:dump"
-
-	PaymentFoundEvent    EventType = "payment:found"
-	PaymentNotFoundEvent EventType = "payment:notfound"
 )
 
 const (
-	VersionKeyTemplate   = "v/%v/%v/%v"
-	EventKeyTemplate     = "e/%v/%v/%v/%v"
-	EventKeyScanTemplate = "e/%v/%v/%v/*"
+	VersionKeyTemplate = "v/%v/%v/%v"
+	EventKeyTemplate   = "e/%v/%v/%v/%v"
 )
 
-type StoreEvent struct {
+type Event struct {
 	EventType EventType   `json:"event_type" bson:"event_type"`
 	Version   int64       `json:"version"    bson:"version"`
 	CreatedAt int64       `json:"created_at" bson:"created_at"`
+	UpdatedAt *int64      `json:"updated_at" bson:"updated_at"`
 	Resource  interface{} `json:"resource"   bson:"resource"`
 }

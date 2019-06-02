@@ -14,18 +14,9 @@
 
 package models
 
-import (
-	"github.com/google/uuid"
-)
+import "github.com/nats-io/nats.go"
 
-type ResourceType string
-
-const (
-	PaymentResource ResourceType = "Payment"
-)
-
-type ResourceLocator struct {
-	ResourceType   *ResourceType `json:"resource_type" bson:"resource_type"`
-	OrganisationID *uuid.UUID    `json:"organisation_id" bson:"organisation_id"`
-	ID             *uuid.UUID    `json:"id"              bson:"id"`
+type ServiceError struct {
+	Cause   string    `json:"cause" bson:"cause"`
+	Request *nats.Msg `json:"request" bson:"request"`
 }
