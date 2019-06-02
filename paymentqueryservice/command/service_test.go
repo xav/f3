@@ -76,6 +76,9 @@ func NewTestStart(t *testing.T, s ...*Start) *Start {
 		fetchEvents: func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID) ([]models.Event, error) {
 			return []models.Event{}, nil
 		},
+		fetchLocators: func(rc redis.Conn, resourceType models.ResourceType, organizationID *uuid.UUID, resourceID *uuid.UUID) ([]models.ResourceLocator, error) {
+			return []models.ResourceLocator{}, nil
+		},
 		buildPaymentFromEvents: func([]models.Event) (*models.Event, error) {
 			return nil, nil
 		},
@@ -87,6 +90,9 @@ func NewTestStart(t *testing.T, s ...*Start) *Start {
 
 	if s[0].fetchEvents != nil {
 		start.fetchEvents = s[0].fetchEvents
+	}
+	if s[0].fetchLocators != nil {
+		start.fetchLocators = s[0].fetchLocators
 	}
 	if s[0].buildPaymentFromEvents != nil {
 		start.buildPaymentFromEvents = s[0].buildPaymentFromEvents
@@ -463,7 +469,7 @@ func TestBuildPaymentFromEvents_DeletedUpdate(t *testing.T) {
 func TestHandleFetchPayment(t *testing.T) {
 	t.Run("fetch payment with no reply inbox", TestHandleFetchPayment_NoReply)
 	t.Run("fetch payment with invalid locator bson", TestHandleFetchPayment_InvalidLocator)
-	t.Run("fetch payment where fetch events fails", TestHandleFetchPayment_FetchError)
+	t.Run("fetch payment where fetch events fails", TestHandleFetchPayment_FetchEventsError)
 	t.Run("fetch payment where no events are found", TestHandleFetchPayment_NoEvents)
 	t.Run("fetch payment where the payment build fails", TestHandleFetchPayment_BuildError)
 	t.Run("fetch payment on a deleted payment", TestHandleFetchPayment_DeletedPayment)
@@ -507,7 +513,7 @@ func TestHandleFetchPayment_InvalidLocator(t *testing.T) {
 	assert.EqualError(t, errors.Cause(err), "Document is corrupted")
 }
 
-func TestHandleFetchPayment_FetchError(t *testing.T) {
+func TestHandleFetchPayment_FetchEventsError(t *testing.T) {
 	f := SetupTest(t)
 	s := NewTestStart(t, &Start{
 		fetchEvents: func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID) ([]models.Event, error) {
@@ -666,6 +672,281 @@ func TestHandleFetchPayment_Payment(t *testing.T) {
 
 	err := s.HandleFetchPayment(f.service, &nats.Msg{
 		Subject: string(models.FetchPaymentEvent),
+		Reply:   "reply",
+		Data:    bsonMarshal(t, models.ResourceLocator{}),
+		Sub:     nil,
+	})
+
+	assert.NoError(t, err)
+}
+
+////////////////////////////////////////
+
+func TestHandleListPayment(t *testing.T) {
+	t.Run("fetch payment with no reply inbox", TestHandleListPayment_NoReply)
+	t.Run("fetch payment with invalid locator bson", TestHandleListPayment_InvalidLocator)
+	t.Run("fetch payment where fetch locators fails", TestHandleListPayment_FetchLocatorsError)
+	t.Run("fetch payment where fetch locators returns nothing", TestHandleListPayment_NoLocators)
+	t.Run("fetch payment where fetch events fails", TestHandleListPayment_FetchEventsError)
+	t.Run("fetch payment where no events are found or the payment was deleted", TestHandleListPayment_NoEventsOrDeleted)
+	t.Run("fetch payment where the payment build fails", TestHandleListPayment_BuildError)
+	t.Run("fetch payment on a regular payment", TestHandleListPayment_Payment)
+}
+
+func TestHandleListPayment_NoReply(t *testing.T) {
+	f := SetupTest(t)
+	s := NewTestStart(t)
+	err := s.HandleListPayment(f.service, &nats.Msg{
+		Subject: string(models.ListPaymentEvent),
+		Reply:   "",
+		Data:    bsonMarshal(t, models.ResourceLocator{}),
+		Sub:     nil,
+	})
+	assert.EqualError(t, errors.Cause(err), "reply inbox missing from fetch message")
+}
+
+func TestHandleListPayment_InvalidLocator(t *testing.T) {
+	f := SetupTest(t)
+	s := NewTestStart(t)
+
+	f.nats.
+		On("Publish", "reply", mock.MatchedBy(func(data []byte) bool {
+			e := models.ServiceError{}
+			if err := bson.Unmarshal(data, &e); err != nil {
+				t.Error("failed to unmarshal publish data")
+				return false
+			}
+			return e.Cause == "failed to unmarshal create event locator"
+		})).
+		Return(nil)
+
+	err := s.HandleListPayment(f.service, &nats.Msg{
+		Subject: string(models.ListPaymentEvent),
+		Reply:   "reply",
+		Data:    []byte(("not_bson")),
+		Sub:     nil,
+	})
+
+	assert.EqualError(t, errors.Cause(err), "Document is corrupted")
+}
+
+func TestHandleListPayment_FetchLocatorsError(t *testing.T) {
+	f := SetupTest(t)
+	s := NewTestStart(t, &Start{
+		fetchLocators: func(rc redis.Conn, resourceType models.ResourceType, organizationID *uuid.UUID, resourceID *uuid.UUID) ([]models.ResourceLocator, error) {
+			return nil, errors.New("fetch error")
+		},
+	})
+	f.nats.
+		On("Publish", "reply", mock.MatchedBy(func(data []byte) bool {
+			e := models.ServiceError{}
+			if err := bson.Unmarshal(data, &e); err != nil {
+				t.Error("failed to unmarshal publish data")
+				return false
+			}
+
+			return strings.HasPrefix(e.Cause, "failed to fetch payment locators for ")
+		})).
+		Return(nil)
+
+	err := s.HandleListPayment(f.service, &nats.Msg{
+		Subject: string(models.ListPaymentEvent),
+		Reply:   "reply",
+		Data:    bsonMarshal(t, models.ResourceLocator{}),
+		Sub:     nil,
+	})
+
+	assert.EqualError(t, errors.Cause(err), "fetch error")
+}
+
+func TestHandleListPayment_NoLocators(t *testing.T) {
+	f := SetupTest(t)
+	s := NewTestStart(t)
+	f.nats.
+		On("Publish", "reply", mock.MatchedBy(func(data []byte) bool {
+			e := models.Event{}
+			if err := bson.Unmarshal(data, &e); err != nil {
+				t.Error("failed to unmarshal publish data")
+				return false
+			}
+
+			require.Equal(t, models.ResourceFoundEvent, e.EventType)
+			assert.Len(t, e.Resource.([]interface{}), 0)
+			return true
+		})).
+		Return(nil)
+
+	err := s.HandleListPayment(f.service, &nats.Msg{
+		Subject: string(models.ListPaymentEvent),
+		Reply:   "reply",
+		Data:    bsonMarshal(t, models.ResourceLocator{}),
+		Sub:     nil,
+	})
+
+	assert.NoError(t, err)
+}
+
+func TestHandleListPayment_FetchEventsError(t *testing.T) {
+	f := SetupTest(t)
+	s := NewTestStart(t, &Start{
+		fetchLocators: func(rc redis.Conn, resourceType models.ResourceType, organizationID *uuid.UUID, resourceID *uuid.UUID) ([]models.ResourceLocator, error) {
+			rt := models.PaymentResource
+			return []models.ResourceLocator{
+				{
+					ResourceType:   &rt,
+					OrganisationID: &uuid.Nil,
+					ID:             &uuid.Nil,
+				},
+			}, nil
+		},
+		fetchEvents: func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID) ([]models.Event, error) {
+			return nil, errors.New("fetch error")
+		},
+	})
+	f.nats.
+		On("Publish", "reply", mock.MatchedBy(func(data []byte) bool {
+			e := models.ServiceError{}
+			if err := bson.Unmarshal(data, &e); err != nil {
+				t.Error("failed to unmarshal publish data")
+				return false
+			}
+
+			return strings.HasPrefix(e.Cause, "failed to fetch payment events for ")
+		})).
+		Return(nil)
+
+	err := s.HandleListPayment(f.service, &nats.Msg{
+		Subject: string(models.ListPaymentEvent),
+		Reply:   "reply",
+		Data:    bsonMarshal(t, models.ResourceLocator{}),
+		Sub:     nil,
+	})
+
+	assert.EqualError(t, errors.Cause(err), "fetch error")
+}
+
+func TestHandleListPayment_NoEventsOrDeleted(t *testing.T) {
+	f := SetupTest(t)
+	s := NewTestStart(t, &Start{
+		fetchLocators: func(rc redis.Conn, resourceType models.ResourceType, organizationID *uuid.UUID, resourceID *uuid.UUID) ([]models.ResourceLocator, error) {
+			rt := models.PaymentResource
+			return []models.ResourceLocator{
+				{
+					ResourceType:   &rt,
+					OrganisationID: &uuid.Nil,
+					ID:             &uuid.Nil,
+				},
+			}, nil
+		},
+		buildPaymentFromEvents: func([]models.Event) (*models.Event, error) {
+			return &models.Event{
+				EventType: models.ResourceNotFoundEvent,
+			}, nil
+		},
+	})
+	f.nats.
+		On("Publish", "reply", mock.MatchedBy(func(data []byte) bool {
+			e := models.Event{}
+			if err := bson.Unmarshal(data, &e); err != nil {
+				t.Error("failed to unmarshal publish data")
+				return false
+			}
+
+			require.Equal(t, models.ResourceFoundEvent, e.EventType)
+			assert.Len(t, e.Resource.([]interface{}), 0)
+			return true
+		})).
+		Return(nil)
+
+	err := s.HandleListPayment(f.service, &nats.Msg{
+		Subject: string(models.ListPaymentEvent),
+		Reply:   "reply",
+		Data:    bsonMarshal(t, models.ResourceLocator{}),
+		Sub:     nil,
+	})
+
+	assert.NoError(t, err)
+}
+
+func TestHandleListPayment_BuildError(t *testing.T) {
+	f := SetupTest(t)
+	s := NewTestStart(t, &Start{
+		fetchLocators: func(rc redis.Conn, resourceType models.ResourceType, organizationID *uuid.UUID, resourceID *uuid.UUID) ([]models.ResourceLocator, error) {
+			rt := models.PaymentResource
+			return []models.ResourceLocator{
+				{
+					ResourceType:   &rt,
+					OrganisationID: &uuid.Nil,
+					ID:             &uuid.Nil,
+				},
+			}, nil
+		},
+		buildPaymentFromEvents: func([]models.Event) (*models.Event, error) {
+			return nil, errors.New("build error")
+		},
+	})
+	f.nats.
+		On("Publish", "reply", mock.MatchedBy(func(data []byte) bool {
+			e := models.ServiceError{}
+			if err := bson.Unmarshal(data, &e); err != nil {
+				t.Error("failed to unmarshal publish data")
+				return false
+			}
+
+			return strings.HasPrefix(e.Cause, "failed to build payment from events for ")
+		})).
+		Return(nil)
+
+	err := s.HandleListPayment(f.service, &nats.Msg{
+		Subject: string(models.ListPaymentEvent),
+		Reply:   "reply",
+		Data:    bsonMarshal(t, models.ResourceLocator{}),
+		Sub:     nil,
+	})
+
+	assert.EqualError(t, errors.Cause(err), "build error")
+}
+
+func TestHandleListPayment_Payment(t *testing.T) {
+	f := SetupTest(t)
+	s := NewTestStart(t, &Start{
+		fetchLocators: func(rc redis.Conn, resourceType models.ResourceType, organizationID *uuid.UUID, resourceID *uuid.UUID) ([]models.ResourceLocator, error) {
+			rt := models.PaymentResource
+			return []models.ResourceLocator{
+				{
+					ResourceType:   &rt,
+					OrganisationID: &uuid.Nil,
+					ID:             &uuid.Nil,
+				},
+			}, nil
+		},
+		buildPaymentFromEvents: func([]models.Event) (*models.Event, error) {
+			updateDate := int64(1445444940)
+			return &models.Event{
+				EventType: models.ResourceFoundEvent,
+				Version:   1,
+				CreatedAt: 499137600,
+				UpdatedAt: &updateDate,
+				Resource:  &models.Payment{},
+			}, nil
+		},
+	})
+	f.nats.
+		On("Publish", "reply", mock.MatchedBy(func(data []byte) bool {
+			e := models.Event{}
+			if err := bson.Unmarshal(data, &e); err != nil {
+				t.Error("failed to unmarshal publish data")
+				return false
+			}
+
+			require.Equal(t, models.ResourceFoundEvent, e.EventType)
+			assert.Len(t, e.Resource.([]interface{}), 1)
+			return true
+		})).
+		Return(nil)
+
+	err := s.HandleListPayment(f.service, &nats.Msg{
+		Subject: string(models.ListPaymentEvent),
 		Reply:   "reply",
 		Data:    bsonMarshal(t, models.ResourceLocator{}),
 		Sub:     nil,

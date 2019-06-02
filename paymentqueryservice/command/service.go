@@ -114,6 +114,61 @@ func (c *Start) HandleFetchPayment(s *service.Service, msg *nats.Msg) error {
 }
 
 func (c *Start) HandleListPayment(s *service.Service, msg *nats.Msg) error {
+	// Check that we have someone to reply to
+	if msg.Reply == "" {
+		return errors.New("reply inbox missing from fetch message")
+	}
+
+	// Decode the event
+	locator := models.ResourceLocator{}
+	if err := bson.Unmarshal(msg.Data, &locator); err != nil {
+		return replyWithError(s.Nats, msg, err, "failed to unmarshal create event locator")
+	}
+
+	// Get locators list
+	locators, err := c.fetchLocators(s.Redis, models.PaymentResource, locator.OrganisationID, locator.ID)
+	if err != nil {
+		return replyWithError(s.Nats, msg, err, fmt.Sprintf("failed to fetch payment locators for '%v / %v'", scanId(locator.OrganisationID), scanId(locator.ID)))
+	}
+
+	// Fetch the payments
+	payments := make([]*models.Payment, 0, len(locators))
+	for _, locator := range locators {
+		// Get payment resource history
+		evts, err := c.fetchEvents(s.Redis, models.PaymentResource, locator.OrganisationID, locator.ID)
+		if err != nil {
+			return replyWithError(s.Nats, msg, err, fmt.Sprintf("failed to fetch payment events for '%v / %v'", locator.OrganisationID, locator.ID))
+		}
+
+		// Apply the events
+		evt, err := c.buildPaymentFromEvents(evts)
+		if err != nil {
+			return replyWithError(s.Nats, msg, err, fmt.Sprintf("failed to build payment from events for '%v / %v'", locator.OrganisationID, locator.ID))
+		}
+
+		switch evt.EventType {
+		case models.ResourceFoundEvent:
+			payments = append(payments, evt.Resource.(*models.Payment))
+		case models.ResourceNotFoundEvent:
+			// 	Payment was deleted, don't add it
+		default:
+			log.Errorf("unrecognized event type: '%v'", evt.EventType)
+		}
+	}
+
+	// Publish the result on the reply subject
+	data, err := bson.Marshal(models.Event{
+		EventType: models.ResourceFoundEvent,
+		Resource:  payments,
+	})
+	if err != nil {
+		return errors.Wrap(err, "failed to encode list request reply")
+	}
+	if err := s.Nats.Publish(msg.Reply, data); err != nil {
+		return replyWithError(s.Nats, msg, err, fmt.Sprintf("failed to post list request reply to '%v'", msg.Reply))
+	}
+
+	log.Infof("listed payments '%v / %v'", scanId(locator.OrganisationID), scanId(locator.ID))
 	return nil
 }
 
