@@ -15,38 +15,54 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"cloud.google.com/go/civil"
 	"github.com/apex/log"
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
 	"github.com/pkg/errors"
-	"github.com/smartystreets/gunit"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/xav/f3/models"
 	"gopkg.in/mgo.v2/bson"
 
 	natsmocks "github.com/xav/f3/f3nats/mocks"
 
-	"github.com/xav/f3/apiservice/server/mocks"
+	"github.com/xav/f3/apiserver/server/mocks"
 )
 
-func TestRoutesFixture(t *testing.T) {
-	gunit.Run(new(RoutesFixture), t)
+func jsonMarshal(t *testing.T, v interface{}) []byte {
+	t.Helper()
+	j, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return j
 }
 
-type RoutesFixture struct {
-	*gunit.Fixture
+func bsonMarshal(t *testing.T, v interface{}) []byte {
+	t.Helper()
+	b, err := bson.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+type RoutesTestFixture struct {
 	server *Server
+	nats   *natsmocks.NatsConn
 	rr     *httptest.ResponseRecorder
 }
 
-func (f *RoutesFixture) Setup() {
+func SetupRoutesTest(t *testing.T) *RoutesTestFixture {
+	t.Helper()
+
 	routesHandler := &mocks.RoutesHandler{}
 	registerCall := func(name string) {
 		routesHandler.
@@ -64,95 +80,127 @@ func (f *RoutesFixture) Setup() {
 	registerCall("UpdatePayment")
 	registerCall("DeletePayment")
 
+	nc := &natsmocks.NatsConn{}
 	s, err := NewServer(func(s *Server) error {
-		s.Nats = &natsmocks.NatsConn{}
+		s.Nats = nc
 		s.routesHandler = routesHandler
 		return nil
 	})
 	if err != nil {
 		log.WithError(err).Fatal("error creating server")
 	}
-	f.server = s
 
-	f.rr = httptest.NewRecorder()
+	return &RoutesTestFixture{
+		server: s,
+		nats:   nc,
+		rr:     httptest.NewRecorder(),
+	}
 }
 
-func (f *RoutesFixture) TestListVersions() {
+func TestRoutes(t *testing.T) {
+	t.Run("check that 'GET /' is routed to 'ListVersions'", TestRoutes_ListVersions)
+	t.Run("check that 'POST /' is not routed to anything", TestRoutes_ListVersions_WrongMethod)
+	t.Run("check that 'GET /v1' is routed to 'ListPayments'", TestRoutes_ListPayments)
+	t.Run("check that 'POST /v1' is routed to 'CreatePayment'", TestRoutes_CreatePayment)
+	t.Run("check that 'PUT /v1' is routed to 'UpdatePayment'", TestRoutes_UpdatePayment)
+	t.Run("check that 'GET /v1/{orgId}/{paymentId}' is routed to 'FetchPayment'", TestRoutes_FetchPayment)
+	t.Run("check that 'DELETE /v1/{orgId}/{paymentId}' is routed to 'DeletePayment'", TestRoutes_DeletePayment)
+}
+
+func TestRoutes_ListVersions(t *testing.T) {
+	f := SetupRoutesTest(t)
 	request := httptest.NewRequest("GET", "/", nil)
 	f.server.Router.ServeHTTP(f.rr, request)
-	f.AssertEqual(http.StatusOK, f.rr.Code)
-	f.AssertEqual("ListVersions", f.rr.Body.String())
+	assert.Equal(t, http.StatusOK, f.rr.Code)
+	assert.Equal(t, "ListVersions", f.rr.Body.String())
 }
 
-func (f *RoutesFixture) TestListVersions_WrongMethod() {
+func TestRoutes_ListVersions_WrongMethod(t *testing.T) {
+	f := SetupRoutesTest(t)
 	request := httptest.NewRequest("POST", "/", nil)
 	f.server.Router.ServeHTTP(f.rr, request)
-	f.AssertEqual(http.StatusMethodNotAllowed, f.rr.Code)
+	assert.Equal(t, http.StatusMethodNotAllowed, f.rr.Code)
 }
 
-func (f *RoutesFixture) TestListPayments() {
+func TestRoutes_ListPayments(t *testing.T) {
+	f := SetupRoutesTest(t)
 	request := httptest.NewRequest("GET", "/v1", nil)
 	f.server.Router.ServeHTTP(f.rr, request)
-	f.AssertEqual(http.StatusOK, f.rr.Code)
-	f.AssertEqual("ListPayments", f.rr.Body.String())
+	assert.Equal(t, http.StatusOK, f.rr.Code)
+	assert.Equal(t, "ListPayments", f.rr.Body.String())
 }
 
-func (f *RoutesFixture) TestCreatePayment() {
+func TestRoutes_CreatePayment(t *testing.T) {
+	f := SetupRoutesTest(t)
 	request := httptest.NewRequest("POST", "/v1", nil)
 	f.server.Router.ServeHTTP(f.rr, request)
-	f.AssertEqual(http.StatusOK, f.rr.Code)
-	f.AssertEqual("CreatePayment", f.rr.Body.String())
+	assert.Equal(t, http.StatusOK, f.rr.Code)
+	assert.Equal(t, "CreatePayment", f.rr.Body.String())
 }
 
-func (f *RoutesFixture) TestUpdatePayment() {
+func TestRoutes_UpdatePayment(t *testing.T) {
+	f := SetupRoutesTest(t)
 	request := httptest.NewRequest("PUT", "/v1", nil)
 	f.server.Router.ServeHTTP(f.rr, request)
-	f.AssertEqual(http.StatusOK, f.rr.Code)
-	f.AssertEqual("UpdatePayment", f.rr.Body.String())
+	assert.Equal(t, http.StatusOK, f.rr.Code)
+	assert.Equal(t, "UpdatePayment", f.rr.Body.String())
 }
 
-func (f *RoutesFixture) TestFetchPayment() {
-	request := httptest.NewRequest("GET", "/v1/orgId/paymentId", nil)
+func TestRoutes_FetchPayment(t *testing.T) {
+	f := SetupRoutesTest(t)
+	request := httptest.NewRequest("GET", "/v1/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000", nil)
 	f.server.Router.ServeHTTP(f.rr, request)
-	f.AssertEqual(http.StatusOK, f.rr.Code)
-	f.AssertEqual("FetchPayment", f.rr.Body.String())
+	assert.Equal(t, http.StatusOK, f.rr.Code)
+	assert.Equal(t, "FetchPayment", f.rr.Body.String())
 }
 
-func (f *RoutesFixture) TestDeletePayment() {
+func TestRoutes_DeletePayment(t *testing.T) {
+	f := SetupRoutesTest(t)
 	request := httptest.NewRequest("DELETE", "/v1/orgId/paymentId", nil)
 	f.server.Router.ServeHTTP(f.rr, request)
-	f.AssertEqual(http.StatusOK, f.rr.Code)
-	f.AssertEqual("DeletePayment", f.rr.Body.String())
+	assert.Equal(t, http.StatusOK, f.rr.Code)
+	assert.Equal(t, "DeletePayment", f.rr.Body.String())
 }
 
 ////////////////////////////////////////
 
-func TestAPICreatePaymentFixture(t *testing.T) {
-	gunit.Run(new(APICreatePaymentFixture), t)
-}
-
-type APICreatePaymentFixture struct {
-	*gunit.Fixture
+type APIServerTestFixture struct {
 	server *Server
 	nats   *natsmocks.NatsConn
 	rr     *httptest.ResponseRecorder
 }
 
-func (f *APICreatePaymentFixture) Setup() {
-	f.nats = &natsmocks.NatsConn{}
+func SetupAPIServerTest(t *testing.T) *APIServerTestFixture {
+	t.Helper()
+
+	nc := &natsmocks.NatsConn{}
 	s, err := NewServer(func(s *Server) error {
-		s.Nats = f.nats
+		s.Nats = nc
 		return nil
 	})
 	if err != nil {
 		log.WithError(err).Fatal("error creating server")
 	}
-	f.server = s
 
-	f.rr = httptest.NewRecorder()
+	return &APIServerTestFixture{
+		server: s,
+		nats:   nc,
+		rr:     httptest.NewRecorder(),
+	}
 }
 
-func (f *APICreatePaymentFixture) TestCreatePayment() {
+////////////////////////////////////////
+
+func TestCreatePayment(t *testing.T) {
+	t.Run("create payment is handled successfully", TestCreatePayment_Success)
+	t.Run("create payment with invalid json input", TestCreatePayment_BadInput)
+	t.Run("create payment with required attributes missing from input", TestCreatePayment_MissingAttributes)
+	t.Run("create payment with payment id missing from input", TestCreatePayment_MissingPaymentId)
+	t.Run("create payment where nats publish fails", TestCreatePayment_QueueError)
+}
+
+func TestCreatePayment_Success(t *testing.T) {
+	f := SetupAPIServerTest(t)
 	//noinspection SpellCheckingInspection
 	input := `{
   "type": "Payment",
@@ -226,10 +274,11 @@ func (f *APICreatePaymentFixture) TestCreatePayment() {
 		Return(nil)
 
 	f.server.Router.ServeHTTP(f.rr, req)
-	f.AssertEqual(http.StatusAccepted, f.rr.Code)
+	assert.Equal(t, http.StatusAccepted, f.rr.Code)
 }
 
-func (f *APICreatePaymentFixture) TestCreatePayment_BadInput() {
+func TestCreatePayment_BadInput(t *testing.T) {
+	f := SetupAPIServerTest(t)
 	//noinspection SpellCheckingInspection
 	input := `{
   "type": "Payment",
@@ -299,10 +348,11 @@ func (f *APICreatePaymentFixture) TestCreatePayment_BadInput() {
 	req := httptest.NewRequest("POST", "/v1", strings.NewReader(input))
 
 	f.server.Router.ServeHTTP(f.rr, req)
-	f.AssertEqual(http.StatusBadRequest, f.rr.Code)
+	assert.Equal(t, http.StatusBadRequest, f.rr.Code)
 }
 
-func (f *APICreatePaymentFixture) TestCreatePayment_MissingAttributes() {
+func TestCreatePayment_MissingAttributes(t *testing.T) {
+	f := SetupAPIServerTest(t)
 	input := `{
   "type": "Payment",
   "id": "4ee3a8d8-ca7b-4290-a52c-dd5b6165ec43",
@@ -312,10 +362,11 @@ func (f *APICreatePaymentFixture) TestCreatePayment_MissingAttributes() {
 	req := httptest.NewRequest("POST", "/v1", strings.NewReader(input))
 
 	f.server.Router.ServeHTTP(f.rr, req)
-	f.AssertEqual(http.StatusBadRequest, f.rr.Code)
+	assert.Equal(t, http.StatusBadRequest, f.rr.Code)
 }
 
-func (f *APICreatePaymentFixture) TestCreatePayment_MissingPaymentId() {
+func TestCreatePayment_MissingPaymentId(t *testing.T) {
+	f := SetupAPIServerTest(t)
 	//noinspection SpellCheckingInspection
 	input := `{
   "type": "Payment",
@@ -384,10 +435,11 @@ func (f *APICreatePaymentFixture) TestCreatePayment_MissingPaymentId() {
 	req := httptest.NewRequest("POST", "/v1", strings.NewReader(input))
 
 	f.server.Router.ServeHTTP(f.rr, req)
-	f.AssertEqual(http.StatusBadRequest, f.rr.Code)
+	assert.Equal(t, http.StatusBadRequest, f.rr.Code)
 }
 
-func (f *APICreatePaymentFixture) TestCreatePayment_QueueError() {
+func TestCreatePayment_QueueError(t *testing.T) {
+	f := SetupAPIServerTest(t)
 	//noinspection SpellCheckingInspection
 	input := `{
   "type": "Payment",
@@ -461,37 +513,21 @@ func (f *APICreatePaymentFixture) TestCreatePayment_QueueError() {
 		Return(errors.New("queue error"))
 
 	f.server.Router.ServeHTTP(f.rr, req)
-	f.AssertEqual(http.StatusInternalServerError, f.rr.Code)
+	assert.Equal(t, http.StatusInternalServerError, f.rr.Code)
 }
 
 ////////////////////////////////////////
 
-func TestAPIUpdatePaymentFixture(t *testing.T) {
-	gunit.Run(new(APIUpdatePaymentFixture), t)
+func TestUpdatePayment(t *testing.T) {
+	t.Run("update payment is handled successfully", TestUpdatePayment_Success)
+	t.Run("update payment with invalid json input", TestUpdatePayment_BadInput)
+	t.Run("update payment with required attributes missing from input", TestUpdatePayment_MissingAttributes)
+	t.Run("update payment with payment id missing from input", TestUpdatePayment_MissingPaymentId)
+	t.Run("update payment where nats publish fails", TestUpdatePayment_QueueError)
 }
 
-type APIUpdatePaymentFixture struct {
-	*gunit.Fixture
-	server *Server
-	nats   *natsmocks.NatsConn
-	rr     *httptest.ResponseRecorder
-}
-
-func (f *APIUpdatePaymentFixture) Setup() {
-	f.nats = &natsmocks.NatsConn{}
-	s, err := NewServer(func(s *Server) error {
-		s.Nats = f.nats
-		return nil
-	})
-	if err != nil {
-		log.WithError(err).Fatal("error creating server")
-	}
-	f.server = s
-
-	f.rr = httptest.NewRecorder()
-}
-
-func (f *APIUpdatePaymentFixture) TestUpdatePayment() {
+func TestUpdatePayment_Success(t *testing.T) {
+	f := SetupAPIServerTest(t)
 	//noinspection SpellCheckingInspection
 	input := `{
   "type": "Payment",
@@ -565,10 +601,11 @@ func (f *APIUpdatePaymentFixture) TestUpdatePayment() {
 		Return(nil)
 
 	f.server.Router.ServeHTTP(f.rr, req)
-	f.AssertEqual(http.StatusAccepted, f.rr.Code)
+	assert.Equal(t, http.StatusAccepted, f.rr.Code)
 }
 
-func (f *APIUpdatePaymentFixture) TestUpdatePayment_BadInput() {
+func TestUpdatePayment_BadInput(t *testing.T) {
+	f := SetupAPIServerTest(t)
 	//noinspection SpellCheckingInspection
 	input := `{
   "type": "Payment",
@@ -638,10 +675,11 @@ func (f *APIUpdatePaymentFixture) TestUpdatePayment_BadInput() {
 	req := httptest.NewRequest("PUT", "/v1", strings.NewReader(input))
 
 	f.server.Router.ServeHTTP(f.rr, req)
-	f.AssertEqual(http.StatusBadRequest, f.rr.Code)
+	assert.Equal(t, http.StatusBadRequest, f.rr.Code)
 }
 
-func (f *APIUpdatePaymentFixture) TestUpdatePayment_MissingAttributes() {
+func TestUpdatePayment_MissingAttributes(t *testing.T) {
+	f := SetupAPIServerTest(t)
 	input := `{
   "type": "Payment",
   "id": "4ee3a8d8-ca7b-4290-a52c-dd5b6165ec43",
@@ -655,10 +693,11 @@ func (f *APIUpdatePaymentFixture) TestUpdatePayment_MissingAttributes() {
 		Return(nil)
 
 	f.server.Router.ServeHTTP(f.rr, req)
-	f.AssertEqual(http.StatusBadRequest, f.rr.Code)
+	assert.Equal(t, http.StatusBadRequest, f.rr.Code)
 }
 
-func (f *APIUpdatePaymentFixture) TestUpdatePayment_MissingPaymentId() {
+func TestUpdatePayment_MissingPaymentId(t *testing.T) {
+	f := SetupAPIServerTest(t)
 	//noinspection SpellCheckingInspection
 	input := `{
   "type": "Payment",
@@ -731,10 +770,11 @@ func (f *APIUpdatePaymentFixture) TestUpdatePayment_MissingPaymentId() {
 		Return(nil)
 
 	f.server.Router.ServeHTTP(f.rr, req)
-	f.AssertEqual(http.StatusBadRequest, f.rr.Code)
+	assert.Equal(t, http.StatusBadRequest, f.rr.Code)
 }
 
-func (f *APIUpdatePaymentFixture) TestUpdatePayment_QueueError() {
+func TestUpdatePayment_QueueError(t *testing.T) {
+	f := SetupAPIServerTest(t)
 	//noinspection SpellCheckingInspection
 	input := `{
   "type": "Payment",
@@ -808,351 +848,263 @@ func (f *APIUpdatePaymentFixture) TestUpdatePayment_QueueError() {
 		Return(errors.New("queue error"))
 
 	f.server.Router.ServeHTTP(f.rr, req)
-	f.AssertEqual(http.StatusInternalServerError, f.rr.Code)
+	assert.Equal(t, http.StatusInternalServerError, f.rr.Code)
 }
 
 ////////////////////////////////////////
 
-func TestAPIFetchPaymentFixture(t *testing.T) {
-	gunit.Run(new(APIFetchPaymentFixture), t)
+func TestFetchPayment(t *testing.T) {
+	t.Run("fetch payment is successful and payment is found", TestFetchPayment_Success)
+	t.Run("fetch payment where organisation id is missing", TestFetchPayment_MissingOrgID)
+	t.Run("fetch payment where organisation id is not a valid uuid", TestFetchPayment_InvalidOrgID)
+	t.Run("fetch payment where payment id is not a valid uuid", TestFetchPayment_InvalidID)
+	t.Run("fetch payment where nats request fails", TestFetchPayment_QueueError)
+	t.Run("fetch payment is successful but payment is not found", TestFetchPayment_NotFound)
+	t.Run("fetch payment where the event type of the reply is not recognised", TestFetchPayment_UnrecognisedResponse)
 }
 
-type APIFetchPaymentFixture struct {
-	*gunit.Fixture
-	server *Server
-	nats   *natsmocks.NatsConn
-	rr     *httptest.ResponseRecorder
-}
+func TestFetchPayment_Success(t *testing.T) {
+	f := SetupAPIServerTest(t)
+	req := httptest.NewRequest("GET", fmt.Sprintf("/v1/%v/%v", uuid.Nil, uuid.Nil), nil)
 
-func (f *APIFetchPaymentFixture) Setup() {
-	f.nats = &natsmocks.NatsConn{}
-	s, err := NewServer(func(s *Server) error {
-		s.Nats = f.nats
-		return nil
+	updateDate := int64(1445444940)
+	data := bsonMarshal(t, models.Event{
+		EventType: models.ResourceFoundEvent,
+		Version:   2,
+		CreatedAt: 499137600,
+		UpdatedAt: &updateDate,
+		Resource:  &models.Payment{},
 	})
-	if err != nil {
-		log.WithError(err).Fatal("error creating server")
-	}
-	f.server = s
-
-	f.rr = httptest.NewRecorder()
-}
-
-func (f *APIFetchPaymentFixture) TestFetchPayment() {
-	locator := models.ResourceLocator{
-		OrganisationID: uuid.New(),
-		ID:             uuid.New(),
-	}
-	req := httptest.NewRequest("GET", fmt.Sprintf("/v1/%v/%v", locator.OrganisationID, locator.ID), nil)
-
-	//noinspection SpellCheckingInspection
-	data, err := bson.Marshal(models.Payment{
-		Type:           "Payment",
-		OrganisationID: uuid.New(),
-		ID:             uuid.New(),
-		Version:        0,
-		Attributes: &models.PaymentAttributes{
-			PaymentID: "123456789012345678",
-			Amount:    100.21,
-			Currency:  "GBP",
-			Purpose:   "Paying for goods/services",
-			Scheme:    "FPS",
-			Type:      "Credit",
-			ProcessingDate: civil.Date{
-				Year:  2017,
-				Month: 1,
-				Day:   18,
-			},
-			NumericReference:  1002001,
-			Reference:         "Payment for Em's piano lessons",
-			EndToEndReference: "Wil piano Jan",
-			ChargesInformation: models.ChargesInformation{
-				BearerCode: "SHAR",
-				SenderCharges: []models.Charges{
-					{
-						Amount:   5.00,
-						Currency: "GBP",
-					}, {
-						Amount:   10.00,
-						Currency: "USD",
-					},
-				},
-				ReceiverChargesAmount:   1.00,
-				ReceiverChargesCurrency: "USD",
-			},
-			Exchange: models.Exchange{
-				ContractReference: "FX123",
-				ExchangeRate:      2.00000,
-				OriginalAmount:    200.42,
-				OriginalCurrency:  "USD",
-			},
-			SchemePaymentSubType: "InternetBanking",
-			SchemePaymentType:    "ImmediatePayment",
-			BeneficiaryParty: models.Party{
-				AccountNumber:     "W Owens",
-				BankId:            "403000",
-				BankIdCode:        "GBDSC",
-				Name:              "Wilfred Jeremiah Owens",
-				Address:           "1 The Beneficiary Localtown SE2",
-				AccountName:       "W Owens",
-				AccountNumberCode: "BBAN",
-				AccountType:       0,
-			},
-			DebtorParty: models.Party{
-				AccountNumber:     "GB29XABC10161234567801",
-				BankId:            "203301",
-				BankIdCode:        "GBDSC",
-				Name:              "Emelia Jane Brown",
-				Address:           "10 Debtor Crescent Sourcetown NE1",
-				AccountName:       "EJ Brown Black",
-				AccountNumberCode: "IBAN",
-				AccountType:       0,
-			},
-			SponsorParty: models.Party{
-				AccountNumber: "56781234",
-				BankId:        "123123",
-				BankIdCode:    "GBDSC",
-			},
-		},
-	})
-	f.Assert(err == nil)
-
 	f.nats.
 		On("Request", string(models.FetchPaymentEvent), mock.Anything, mock.Anything).
 		Return(&nats.Msg{
-			Subject: string(models.PaymentFoundEvent),
+			Subject: "reply",
 			Reply:   "",
 			Data:    data,
 			Sub:     nil,
 		}, nil)
 
 	f.server.Router.ServeHTTP(f.rr, req)
-	f.AssertEqual(http.StatusOK, f.rr.Code)
+	assert.Equal(t, http.StatusOK, f.rr.Code)
 }
 
-func (f *APIFetchPaymentFixture) TestFetchPayment_MissingOrgID() {
-	locator := models.ResourceLocator{
-		OrganisationID: uuid.New(),
-		ID:             uuid.New(),
-	}
-	req := httptest.NewRequest("GET", fmt.Sprintf("/v1//%v", locator.ID), nil)
+func TestFetchPayment_MissingOrgID(t *testing.T) {
+	f := SetupAPIServerTest(t)
+	req := httptest.NewRequest("GET", fmt.Sprintf("/v1//%v", uuid.Nil), nil)
 
 	f.server.Router.ServeHTTP(f.rr, req)
-	f.AssertEqual(http.StatusNotFound, f.rr.Code)
+	assert.Equal(t, http.StatusNotFound, f.rr.Code)
 }
 
-func (f *APIFetchPaymentFixture) TestFetchPayment_InvalidOrgID() {
-	locator := models.ResourceLocator{
-		OrganisationID: uuid.New(),
-		ID:             uuid.New(),
-	}
-	req := httptest.NewRequest("GET", fmt.Sprintf("/v1/not-uuid/%v", locator.ID), nil)
+func TestFetchPayment_InvalidOrgID(t *testing.T) {
+	f := SetupAPIServerTest(t)
+	req := httptest.NewRequest("GET", fmt.Sprintf("/v1/not-uuid/%v", uuid.Nil), nil)
 
 	f.server.Router.ServeHTTP(f.rr, req)
-	f.AssertEqual(http.StatusNotFound, f.rr.Code)
+	assert.Equal(t, http.StatusNotFound, f.rr.Code)
 }
 
-func (f *APIFetchPaymentFixture) TestFetchPayment_InvalidID() {
-	locator := models.ResourceLocator{
-		OrganisationID: uuid.New(),
-		ID:             uuid.New(),
-	}
-	req := httptest.NewRequest("GET", fmt.Sprintf("/v1/%v/not-uuid", locator.OrganisationID), nil)
+func TestFetchPayment_InvalidID(t *testing.T) {
+	f := SetupAPIServerTest(t)
+	req := httptest.NewRequest("GET", fmt.Sprintf("/v1/%v/not-uuid", uuid.Nil), nil)
 
 	f.server.Router.ServeHTTP(f.rr, req)
-	f.AssertEqual(http.StatusNotFound, f.rr.Code)
+	assert.Equal(t, http.StatusNotFound, f.rr.Code)
 }
 
-func (f *APIFetchPaymentFixture) TestFetchPayment_QueueError() {
-	locator := models.ResourceLocator{
-		OrganisationID: uuid.New(),
-		ID:             uuid.New(),
-	}
-	req := httptest.NewRequest("GET", fmt.Sprintf("/v1/%v/%v", locator.OrganisationID, locator.ID), nil)
+func TestFetchPayment_QueueError(t *testing.T) {
+	f := SetupAPIServerTest(t)
+	req := httptest.NewRequest("GET", fmt.Sprintf("/v1/%v/%v", uuid.Nil, uuid.Nil), nil)
 
 	f.nats.
 		On("Request", string(models.FetchPaymentEvent), mock.Anything, mock.Anything).
 		Return(nil, errors.New("queue error"))
 
 	f.server.Router.ServeHTTP(f.rr, req)
-	f.AssertEqual(http.StatusInternalServerError, f.rr.Code)
+	assert.Equal(t, http.StatusInternalServerError, f.rr.Code)
 }
 
-func (f *APIFetchPaymentFixture) TestFetchPayment_NotFound() {
-	locator := models.ResourceLocator{
-		OrganisationID: uuid.New(),
-		ID:             uuid.New(),
-	}
-	req := httptest.NewRequest("GET", fmt.Sprintf("/v1/%v/%v", locator.OrganisationID, locator.ID), nil)
+func TestFetchPayment_NotFound(t *testing.T) {
+	f := SetupAPIServerTest(t)
+	req := httptest.NewRequest("GET", fmt.Sprintf("/v1/%v/%v", uuid.Nil, uuid.Nil), nil)
 
-	f.nats.
-		On("Request", string(models.FetchPaymentEvent), mock.Anything, mock.Anything).
-		Return(&nats.Msg{
-			Subject: string(models.PaymentNotFoundEvent),
-			Reply:   "",
-			Data:    nil,
-			Sub:     nil,
-		}, nil)
-
-	f.server.Router.ServeHTTP(f.rr, req)
-	f.AssertEqual(http.StatusNotFound, f.rr.Code)
-}
-
-func (f *APIFetchPaymentFixture) TestFetchPayment_UnrecognisedResponse() {
-	locator := models.ResourceLocator{
-		OrganisationID: uuid.New(),
-		ID:             uuid.New(),
-	}
-	req := httptest.NewRequest("GET", fmt.Sprintf("/v1/%v/%v", locator.OrganisationID, locator.ID), nil)
-
-	f.nats.
-		On("Request", string(models.FetchPaymentEvent), mock.Anything, mock.Anything).
-		Return(&nats.Msg{
-			Subject: "SomethingElse",
-			Reply:   "",
-			Data:    nil,
-			Sub:     nil,
-		}, nil)
-
-	f.server.Router.ServeHTTP(f.rr, req)
-	f.AssertEqual(http.StatusInternalServerError, f.rr.Code)
-}
-
-////////////////////////////////////////
-
-func TestAPIDeletePaymentFixture(t *testing.T) {
-	gunit.Run(new(APIDeletePaymentFixture), t)
-}
-
-type APIDeletePaymentFixture struct {
-	*gunit.Fixture
-	server *Server
-	nats   *natsmocks.NatsConn
-	rr     *httptest.ResponseRecorder
-}
-
-func (f *APIDeletePaymentFixture) Setup() {
-	f.nats = &natsmocks.NatsConn{}
-	s, err := NewServer(func(s *Server) error {
-		s.Nats = f.nats
-		return nil
+	updateDate := int64(1445444940)
+	data := bsonMarshal(t, models.Event{
+		EventType: models.ResourceNotFoundEvent,
+		Version:   2,
+		CreatedAt: 499137600,
+		UpdatedAt: &updateDate,
+		Resource:  &models.Payment{},
 	})
-	if err != nil {
-		log.WithError(err).Fatal("error creating server")
-	}
-	f.server = s
-
-	f.rr = httptest.NewRecorder()
-}
-
-func (f *APIDeletePaymentFixture) TestDeletePayment() {
-	locator := models.ResourceLocator{
-		OrganisationID: uuid.New(),
-		ID:             uuid.New(),
-	}
-	req := httptest.NewRequest("DELETE", fmt.Sprintf("/v1/%v/%v", locator.OrganisationID, locator.ID), nil)
-
-	//noinspection SpellCheckingInspection
-	data, err := bson.Marshal(locator)
-	f.Assert(err == nil)
-
 	f.nats.
-		On("Request", string(models.DeletePaymentEvent), mock.Anything, mock.Anything).
+		On("Request", string(models.FetchPaymentEvent), mock.Anything, mock.Anything).
 		Return(&nats.Msg{
-			Subject: string(models.PaymentFoundEvent),
+			Subject: "reply",
 			Reply:   "",
 			Data:    data,
 			Sub:     nil,
 		}, nil)
 
 	f.server.Router.ServeHTTP(f.rr, req)
-	f.AssertEqual(http.StatusGone, f.rr.Code)
+	assert.Equal(t, http.StatusNotFound, f.rr.Code)
 }
 
-func (f *APIDeletePaymentFixture) TestDeletePayment_MissingOrgID() {
-	locator := models.ResourceLocator{
-		OrganisationID: uuid.New(),
-		ID:             uuid.New(),
-	}
-	req := httptest.NewRequest("DELETE", fmt.Sprintf("/v1//%v", locator.ID), nil)
+func TestFetchPayment_UnrecognisedResponse(t *testing.T) {
+	f := SetupAPIServerTest(t)
+	req := httptest.NewRequest("GET", fmt.Sprintf("/v1/%v/%v", uuid.Nil, uuid.Nil), nil)
+
+	updateDate := int64(1445444940)
+	data := bsonMarshal(t, models.Event{
+		EventType: "a man has no name",
+		Version:   2,
+		CreatedAt: 499137600,
+		UpdatedAt: &updateDate,
+		Resource:  &models.Payment{},
+	})
+	f.nats.
+		On("Request", string(models.FetchPaymentEvent), mock.Anything, mock.Anything).
+		Return(&nats.Msg{
+			Subject: "reply",
+			Reply:   "",
+			Data:    data,
+			Sub:     nil,
+		}, nil)
 
 	f.server.Router.ServeHTTP(f.rr, req)
-	f.AssertEqual(http.StatusNotFound, f.rr.Code)
+	assert.Equal(t, http.StatusInternalServerError, f.rr.Code)
 }
 
-func (f *APIDeletePaymentFixture) TestDeletePayment_InvalidOrgID() {
-	locator := models.ResourceLocator{
-		OrganisationID: uuid.New(),
-		ID:             uuid.New(),
-	}
-	req := httptest.NewRequest("DELETE", fmt.Sprintf("/v1/not-uuid/%v", locator.ID), nil)
+////////////////////////////////////////
 
-	f.server.Router.ServeHTTP(f.rr, req)
-	f.AssertEqual(http.StatusNotFound, f.rr.Code)
+func TestDeletePayment(t *testing.T) {
+	t.Run("delete payment is successful and payment was found", TestDeletePayment_Success)
+	t.Run("delete payment where organisation id is missing", TestDeletePayment_MissingOrgID)
+	t.Run("delete payment where organisation id is not a valid uuid", TestDeletePayment_InvalidOrgID)
+	t.Run("delete payment where payment id is not a valid uuid", TestDeletePayment_InvalidID)
+	t.Run("delete payment where nats request fails", TestDeletePayment_QueueError)
+	t.Run("delete payment is successful but payment is not found", TestDeletePayment_NotFound)
+	t.Run("delete payment where the event type of the reply is not recognised", TestDeletePayment_UnrecognisedResponse)
 }
 
-func (f *APIDeletePaymentFixture) TestDeletePayment_InvalidID() {
+func TestDeletePayment_Success(t *testing.T) {
+	f := SetupAPIServerTest(t)
 	locator := models.ResourceLocator{
-		OrganisationID: uuid.New(),
-		ID:             uuid.New(),
-	}
-	req := httptest.NewRequest("DELETE", fmt.Sprintf("/v1/%v/not-uuid", locator.OrganisationID), nil)
-
-	f.server.Router.ServeHTTP(f.rr, req)
-	f.AssertEqual(http.StatusNotFound, f.rr.Code)
-}
-
-func (f *APIDeletePaymentFixture) TestDeletePayment_QueueError() {
-	locator := models.ResourceLocator{
-		OrganisationID: uuid.New(),
-		ID:             uuid.New(),
+		OrganisationID: &uuid.Nil,
+		ID:             &uuid.Nil,
 	}
 	req := httptest.NewRequest("DELETE", fmt.Sprintf("/v1/%v/%v", locator.OrganisationID, locator.ID), nil)
+
+	updateDate := int64(1445444940)
+	data := bsonMarshal(t, models.Event{
+		EventType: models.ResourceFoundEvent,
+		Version:   2,
+		CreatedAt: 499137600,
+		UpdatedAt: &updateDate,
+		Resource:  &locator,
+	})
+	f.nats.
+		On("Request", string(models.DeletePaymentEvent), mock.Anything, mock.Anything).
+		Return(&nats.Msg{
+			Subject: "reply",
+			Reply:   "",
+			Data:    data,
+			Sub:     nil,
+		}, nil)
+
+	f.server.Router.ServeHTTP(f.rr, req)
+	assert.Equal(t, http.StatusGone, f.rr.Code)
+}
+
+func TestDeletePayment_MissingOrgID(t *testing.T) {
+	f := SetupAPIServerTest(t)
+	req := httptest.NewRequest("DELETE", fmt.Sprintf("/v1//%v", uuid.Nil), nil)
+
+	f.server.Router.ServeHTTP(f.rr, req)
+	assert.Equal(t, http.StatusNotFound, f.rr.Code)
+}
+
+func TestDeletePayment_InvalidOrgID(t *testing.T) {
+	f := SetupAPIServerTest(t)
+	req := httptest.NewRequest("DELETE", fmt.Sprintf("/v1/not-uuid/%v", uuid.Nil), nil)
+
+	f.server.Router.ServeHTTP(f.rr, req)
+	assert.Equal(t, http.StatusNotFound, f.rr.Code)
+}
+
+func TestDeletePayment_InvalidID(t *testing.T) {
+	f := SetupAPIServerTest(t)
+	req := httptest.NewRequest("DELETE", fmt.Sprintf("/v1/%v/not-uuid", uuid.Nil), nil)
+
+	f.server.Router.ServeHTTP(f.rr, req)
+	assert.Equal(t, http.StatusNotFound, f.rr.Code)
+}
+
+func TestDeletePayment_QueueError(t *testing.T) {
+	f := SetupAPIServerTest(t)
+	req := httptest.NewRequest("DELETE", fmt.Sprintf("/v1/%v/%v", uuid.Nil, uuid.Nil), nil)
 
 	f.nats.
 		On("Request", string(models.DeletePaymentEvent), mock.Anything, mock.Anything).
 		Return(nil, errors.New("queue error"))
 
 	f.server.Router.ServeHTTP(f.rr, req)
-	f.AssertEqual(http.StatusInternalServerError, f.rr.Code)
+	assert.Equal(t, http.StatusInternalServerError, f.rr.Code)
 }
 
-func (f *APIDeletePaymentFixture) TestDeletePayment_NotFound() {
+func TestDeletePayment_NotFound(t *testing.T) {
+	f := SetupAPIServerTest(t)
 	locator := models.ResourceLocator{
-		OrganisationID: uuid.New(),
-		ID:             uuid.New(),
+		OrganisationID: &uuid.Nil,
+		ID:             &uuid.Nil,
 	}
 	req := httptest.NewRequest("DELETE", fmt.Sprintf("/v1/%v/%v", locator.OrganisationID, locator.ID), nil)
 
+	updateDate := int64(1445444940)
+	data := bsonMarshal(t, models.Event{
+		EventType: models.ResourceNotFoundEvent,
+		Version:   2,
+		CreatedAt: 499137600,
+		UpdatedAt: &updateDate,
+		Resource:  &locator,
+	})
 	f.nats.
 		On("Request", string(models.DeletePaymentEvent), mock.Anything, mock.Anything).
 		Return(&nats.Msg{
-			Subject: string(models.PaymentNotFoundEvent),
+			Subject: "reply",
 			Reply:   "",
-			Data:    nil,
+			Data:    data,
 			Sub:     nil,
 		}, nil)
 
 	f.server.Router.ServeHTTP(f.rr, req)
-	f.AssertEqual(http.StatusNotFound, f.rr.Code)
+	assert.Equal(t, http.StatusNotFound, f.rr.Code)
 }
 
-func (f *APIDeletePaymentFixture) TestDeletePayment_UnrecognisedResponse() {
+func TestDeletePayment_UnrecognisedResponse(t *testing.T) {
+	f := SetupAPIServerTest(t)
 	locator := models.ResourceLocator{
-		OrganisationID: uuid.New(),
-		ID:             uuid.New(),
+		OrganisationID: &uuid.Nil,
+		ID:             &uuid.Nil,
 	}
 	req := httptest.NewRequest("DELETE", fmt.Sprintf("/v1/%v/%v", locator.OrganisationID, locator.ID), nil)
 
+	updateDate := int64(1445444940)
+	data := bsonMarshal(t, models.Event{
+		EventType: "jaqen h'ghar",
+		Version:   2,
+		CreatedAt: 499137600,
+		UpdatedAt: &updateDate,
+		Resource:  &locator,
+	})
 	f.nats.
 		On("Request", string(models.DeletePaymentEvent), mock.Anything, mock.Anything).
 		Return(&nats.Msg{
-			Subject: "SomethingElse",
+			Subject: "reply",
 			Reply:   "",
-			Data:    nil,
+			Data:    data,
 			Sub:     nil,
 		}, nil)
 
 	f.server.Router.ServeHTTP(f.rr, req)
-	f.AssertEqual(http.StatusInternalServerError, f.rr.Code)
+	assert.Equal(t, http.StatusInternalServerError, f.rr.Code)
 }

@@ -157,7 +157,23 @@ func (s *Server) ListVersions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) ListPayments(w http.ResponseWriter, r *http.Request) {
-	render.DefaultResponder(w, r, "ListPayments")
+	data, err := bson.Marshal(models.ResourceLocator{
+		OrganisationID: nil,
+		ID:             nil,
+	})
+	if err != nil {
+		log.WithError(err).Error("failed to marshal payment resource locator")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	_, err = s.Nats.Request(string(models.ListPaymentEvent), data, 10*time.Millisecond)
+	if err != nil {
+		log.WithError(err).Error("fetch request event failed")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 }
 
 func (s *Server) CreatePayment(w http.ResponseWriter, r *http.Request) {
@@ -204,8 +220,8 @@ func (s *Server) FetchPayment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data, err := bson.Marshal(models.ResourceLocator{
-		OrganisationID: oid,
-		ID:             pid,
+		OrganisationID: &oid,
+		ID:             &pid,
 	})
 	if err != nil {
 		log.WithError(err).Error("failed to marshal payment resource locator")
@@ -220,16 +236,17 @@ func (s *Server) FetchPayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch msg.Subject {
-	case string(models.PaymentFoundEvent):
-		payment := models.Payment{}
-		if err := bson.Unmarshal(msg.Data, &payment); err != nil {
-			log.WithError(err).Error("failed to unmarshal payment data")
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		render.DefaultResponder(w, r, payment)
-	case string(models.PaymentNotFoundEvent):
+	replyEvent := models.PaymentEvent{}
+	if err := bson.Unmarshal(msg.Data, &replyEvent); err != nil {
+		log.WithError(err).Error("failed to decode reply data")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	switch replyEvent.EventType {
+	case models.ResourceFoundEvent:
+		render.DefaultResponder(w, r, replyEvent.Resource)
+	case models.ResourceNotFoundEvent:
 		log.Warnf("payment '%v/%v' was not found", oid.String(), pid.String())
 		http.Error(w, fmt.Sprintf("payment '%v/%v' was not found", oid.String(), pid.String()), http.StatusNotFound)
 	default:
@@ -283,8 +300,8 @@ func (s *Server) DeletePayment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data, err := bson.Marshal(models.ResourceLocator{
-		OrganisationID: oid,
-		ID:             pid,
+		OrganisationID: &oid,
+		ID:             &pid,
 	})
 	if err != nil {
 		log.WithError(err).Error("failed to marshal resource resource locator")
@@ -299,17 +316,18 @@ func (s *Server) DeletePayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch msg.Subject {
-	case string(models.PaymentFoundEvent):
-		resource := models.ResourceLocator{}
-		if err := bson.Unmarshal(msg.Data, &resource); err != nil {
-			log.WithError(err).Error("failed to unmarshal resource data")
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+	replyEvent := models.LocatorEvent{}
+	if err := bson.Unmarshal(msg.Data, &replyEvent); err != nil {
+		log.WithError(err).Error("failed to decode reply data")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	switch replyEvent.EventType {
+	case models.ResourceFoundEvent:
 		render.Status(r, http.StatusGone)
-		render.DefaultResponder(w, r, resource)
-	case string(models.PaymentNotFoundEvent):
+		render.DefaultResponder(w, r, replyEvent.Resource)
+	case models.ResourceNotFoundEvent:
 		log.Warnf("resource '%v/%v' was not found", oid.String(), pid.String())
 		http.Error(w, fmt.Sprintf("resource '%v/%v' was not found", oid.String(), pid.String()), http.StatusNotFound)
 	default:
