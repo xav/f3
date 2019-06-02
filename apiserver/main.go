@@ -20,7 +20,7 @@ import (
 	"github.com/apex/log"
 	"github.com/apex/log/handlers/text"
 
-	"github.com/xav/f3/apiservice/command"
+	"github.com/xav/f3/apiserver/command"
 )
 
 func main() {

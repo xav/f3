@@ -21,7 +21,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/spf13/cobra"
 
-	"github.com/xav/f3/apiservice/server"
+	"github.com/xav/f3/apiserver/server"
 )
 
 // Server starts the dispatch server.
