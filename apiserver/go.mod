@@ -12,8 +12,7 @@ require (
 	github.com/pkg/errors v0.8.1
 	github.com/spf13/cobra v0.0.4
 	github.com/stretchr/testify v1.3.0
-	github.com/xav/f3/apiservice v0.0.0-20190602163333-e1e9f149c270
-	github.com/xav/f3/f3nats v0.0.0-20190602163333-e1e9f149c270
-	github.com/xav/f3/models v0.0.0-20190602163333-e1e9f149c270
+	github.com/xav/f3/f3nats v0.0.0-20190602215447-30d98aed83c2
+	github.com/xav/f3/models v0.0.0-20190602215447-30d98aed83c2
 	gopkg.in/mgo.v2 v2.0.0-20180705113604-9856a29383ce
 )

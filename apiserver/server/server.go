@@ -249,9 +249,14 @@ func (s *Server) FetchPayment(w http.ResponseWriter, r *http.Request) {
 	case models.ResourceNotFoundEvent:
 		log.Warnf("payment '%v/%v' was not found", oid.String(), pid.String())
 		http.Error(w, fmt.Sprintf("payment '%v/%v' was not found", oid.String(), pid.String()), http.StatusNotFound)
+	case models.ServiceErrorEvent:
+		replyEvent := models.Event{}
+		_ = bson.Unmarshal(msg.Data, &replyEvent)
+		cause := replyEvent.Resource.(bson.M)["cause"].(string)
+		http.Error(w, fmt.Sprintf(cause), http.StatusInternalServerError)
 	default:
-		log.Errorf("unrecognised response to fetch request: '%v'", msg.Subject)
-		http.Error(w, fmt.Sprintf("unrecognised response to fetch request: '%v'", msg.Subject), http.StatusInternalServerError)
+		log.Errorf("unrecognised response to fetch request: '%v'", replyEvent.EventType)
+		http.Error(w, fmt.Sprintf("unrecognised response to fetch request: '%v'", replyEvent.EventType), http.StatusInternalServerError)
 	}
 }
 
@@ -330,8 +335,13 @@ func (s *Server) DeletePayment(w http.ResponseWriter, r *http.Request) {
 	case models.ResourceNotFoundEvent:
 		log.Warnf("resource '%v/%v' was not found", oid.String(), pid.String())
 		http.Error(w, fmt.Sprintf("resource '%v/%v' was not found", oid.String(), pid.String()), http.StatusNotFound)
+	case models.ServiceErrorEvent:
+		replyEvent := models.Event{}
+		_ = bson.Unmarshal(msg.Data, &replyEvent)
+		cause := replyEvent.Resource.(bson.M)["cause"].(string)
+		http.Error(w, fmt.Sprintf(cause), http.StatusInternalServerError)
 	default:
-		log.Errorf("unrecognised response to fetch request: '%v'", msg.Subject)
-		http.Error(w, fmt.Sprintf("unrecognised response to fetch request: '%v'", msg.Subject), http.StatusInternalServerError)
+		log.Errorf("unrecognised response to fetch request: '%v'", replyEvent.EventType)
+		http.Error(w, fmt.Sprintf("unrecognised response to fetch request: '%v'", replyEvent.EventType), http.StatusInternalServerError)
 	}
 }

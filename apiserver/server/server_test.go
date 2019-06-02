@@ -855,6 +855,7 @@ func TestUpdatePayment_QueueError(t *testing.T) {
 
 func TestFetchPayment(t *testing.T) {
 	t.Run("fetch payment is successful and payment is found", TestFetchPayment_Success)
+	t.Run("query service failed to process the fetch request", TestFetchPayment_ServiceError)
 	t.Run("fetch payment where organisation id is missing", TestFetchPayment_MissingOrgID)
 	t.Run("fetch payment where organisation id is not a valid uuid", TestFetchPayment_InvalidOrgID)
 	t.Run("fetch payment where payment id is not a valid uuid", TestFetchPayment_InvalidID)
@@ -886,6 +887,31 @@ func TestFetchPayment_Success(t *testing.T) {
 
 	f.server.Router.ServeHTTP(f.rr, req)
 	assert.Equal(t, http.StatusOK, f.rr.Code)
+}
+
+func TestFetchPayment_ServiceError(t *testing.T) {
+	f := SetupAPIServerTest(t)
+	req := httptest.NewRequest("GET", fmt.Sprintf("/v1/%v/%v", uuid.Nil, uuid.Nil), nil)
+
+	data := bsonMarshal(t, models.Event{
+		EventType: models.ServiceErrorEvent,
+		Resource: models.ServiceError{
+			Cause:   "service error",
+			Request: nil,
+		},
+	})
+	f.nats.
+		On("Request", string(models.FetchPaymentEvent), mock.Anything, mock.Anything).
+		Return(&nats.Msg{
+			Subject: "reply",
+			Reply:   "",
+			Data:    data,
+			Sub:     nil,
+		}, nil)
+
+	f.server.Router.ServeHTTP(f.rr, req)
+	assert.Equal(t, http.StatusInternalServerError, f.rr.Code)
+	assert.Equal(t, "service error\n", f.rr.Body.String())
 }
 
 func TestFetchPayment_MissingOrgID(t *testing.T) {
@@ -972,12 +998,14 @@ func TestFetchPayment_UnrecognisedResponse(t *testing.T) {
 
 	f.server.Router.ServeHTTP(f.rr, req)
 	assert.Equal(t, http.StatusInternalServerError, f.rr.Code)
+	assert.Equal(t, "unrecognised response to fetch request: 'a man has no name'\n", f.rr.Body.String())
 }
 
 ////////////////////////////////////////
 
 func TestDeletePayment(t *testing.T) {
 	t.Run("delete payment is successful and payment was found", TestDeletePayment_Success)
+	t.Run("query service failed to process the delete request", TestDeletePayment_ServiceError)
 	t.Run("delete payment where organisation id is missing", TestDeletePayment_MissingOrgID)
 	t.Run("delete payment where organisation id is not a valid uuid", TestDeletePayment_InvalidOrgID)
 	t.Run("delete payment where payment id is not a valid uuid", TestDeletePayment_InvalidID)
@@ -1013,6 +1041,31 @@ func TestDeletePayment_Success(t *testing.T) {
 
 	f.server.Router.ServeHTTP(f.rr, req)
 	assert.Equal(t, http.StatusGone, f.rr.Code)
+}
+
+func TestDeletePayment_ServiceError(t *testing.T) {
+	f := SetupAPIServerTest(t)
+	req := httptest.NewRequest("DELETE", fmt.Sprintf("/v1/%v/%v", uuid.Nil, uuid.Nil), nil)
+
+	data := bsonMarshal(t, models.Event{
+		EventType: models.ServiceErrorEvent,
+		Resource: models.ServiceError{
+			Cause:   "service error",
+			Request: nil,
+		},
+	})
+	f.nats.
+		On("Request", string(models.DeletePaymentEvent), mock.Anything, mock.Anything).
+		Return(&nats.Msg{
+			Subject: "reply",
+			Reply:   "",
+			Data:    data,
+			Sub:     nil,
+		}, nil)
+
+	f.server.Router.ServeHTTP(f.rr, req)
+	assert.Equal(t, http.StatusInternalServerError, f.rr.Code)
+	assert.Equal(t, "service error\n", f.rr.Body.String())
 }
 
 func TestDeletePayment_MissingOrgID(t *testing.T) {
@@ -1107,4 +1160,5 @@ func TestDeletePayment_UnrecognisedResponse(t *testing.T) {
 
 	f.server.Router.ServeHTTP(f.rr, req)
 	assert.Equal(t, http.StatusInternalServerError, f.rr.Code)
+	assert.Equal(t, "unrecognised response to fetch request: 'jaqen h'ghar'\n", f.rr.Body.String())
 }

@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/apex/log"
 	"github.com/gomodule/redigo/redis"
@@ -363,14 +364,20 @@ func scanId(id *uuid.UUID) string {
 func replyWithError(conn f3nats.NatsConn, request *nats.Msg, err error, msg string) error {
 	if request == nil {
 		log.Error("request cannot be nil for reply")
-		return errors.WithMessage(errors.Wrap(err, msg), "request cannot be mil for reply")
-	}
-	se := models.ServiceError{
-		Cause:   msg,
-		Request: request,
+		return errors.WithMessage(errors.Wrap(err, msg), "request cannot be mil for error reply")
 	}
 
-	if data, err := bson.Marshal(se); err != nil {
+	ev := models.Event{
+		EventType: models.ServiceErrorEvent,
+		Version:   0,
+		CreatedAt: time.Now().Unix(),
+		Resource: &models.ServiceError{
+			Cause:   msg,
+			Request: request,
+		},
+	}
+
+	if data, err := bson.Marshal(ev); err != nil {
 		log.Errorf("failed to marshal service error (%v)", msg)
 		if err := conn.Publish(request.Reply, []byte(msg)); err != nil {
 			log.Errorf("failed to post error reply to '%v'", request.Reply)
