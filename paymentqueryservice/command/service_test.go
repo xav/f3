@@ -79,9 +79,6 @@ func NewTestStart(t *testing.T, s ...*Start) *Start {
 		buildPaymentFromEvents: func([]models.Event) (*models.Event, error) {
 			return nil, nil
 		},
-		scanResources: func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID, uint8) (uint8, [][]byte, error) {
-			return 0, nil, nil
-		},
 	}
 
 	if len(s) == 0 {
@@ -120,9 +117,14 @@ func TestFetchEvents_ScanError(t *testing.T) {
 
 func TestFetchEvents_OneBatch(t *testing.T) {
 	f := SetupTest(t)
+
+	k := []byte("e/Payment/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000/1")
 	f.redis.
 		Command("SCAN", uint8(0), redigomock.NewAnyData(), redigomock.NewAnyData()).
-		ExpectSlice([]byte("0"), []interface{}{jsonMarshal(t, models.Event{})})
+		ExpectSlice([]byte("0"), []interface{}{k})
+	f.redis.
+		Command("GET", k).
+		Expect(jsonMarshal(t, models.Event{}))
 
 	events, err := fetchEvents(f.service.Redis, models.PaymentResource, &uuid.Nil, &uuid.Nil)
 
@@ -132,12 +134,22 @@ func TestFetchEvents_OneBatch(t *testing.T) {
 
 func TestFetchEvents_MultipleBatches(t *testing.T) {
 	f := SetupTest(t)
+	k := [][]byte{
+		[]byte("e/Payment/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000/1"),
+		[]byte("e/Payment/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000/2"),
+	}
 	f.redis.
 		Command("SCAN", uint8(0), redigomock.NewAnyData(), redigomock.NewAnyData()).
-		ExpectSlice([]byte("1"), []interface{}{jsonMarshal(t, models.Event{})})
+		ExpectSlice([]byte("1"), []interface{}{k[0]})
+	f.redis.
+		Command("GET", k[0]).
+		Expect(jsonMarshal(t, models.Event{}))
 	f.redis.
 		Command("SCAN", uint8(1), redigomock.NewAnyData(), redigomock.NewAnyData()).
-		ExpectSlice([]byte("0"), []interface{}{jsonMarshal(t, models.Event{})})
+		ExpectSlice([]byte("0"), []interface{}{k[1]})
+	f.redis.
+		Command("GET", k[1]).
+		Expect(jsonMarshal(t, models.Event{}))
 
 	events, err := fetchEvents(f.service.Redis, models.PaymentResource, &uuid.Nil, &uuid.Nil)
 
@@ -147,20 +159,88 @@ func TestFetchEvents_MultipleBatches(t *testing.T) {
 
 func TestFetchEvents_OutOfOrder(t *testing.T) {
 	f := SetupTest(t)
-	evt0 := jsonMarshal(t, models.Event{Version: 0})
-	evt1 := jsonMarshal(t, models.Event{Version: 1})
-	evt2 := jsonMarshal(t, models.Event{Version: 2})
+	k := [][]byte{
+		[]byte("e/Payment/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000/1"),
+		[]byte("e/Payment/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000/2"),
+		[]byte("e/Payment/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000/3"),
+	}
+	evt := [][]byte{
+		jsonMarshal(t, models.Event{Version: 1}),
+		jsonMarshal(t, models.Event{Version: 2}),
+		jsonMarshal(t, models.Event{Version: 3}),
+	}
 	f.redis.
 		Command("SCAN", uint8(0), redigomock.NewAnyData(), redigomock.NewAnyData()).
-		ExpectSlice([]byte("0"), []interface{}{evt2, evt0, evt1})
+		ExpectSlice([]byte("0"), []interface{}{k[2], k[0], k[1]})
+	f.redis.
+		Command("GET", k[0]).
+		Expect(evt[0])
+	f.redis.
+		Command("GET", k[1]).
+		Expect(evt[1])
+	f.redis.
+		Command("GET", k[2]).
+		Expect(evt[2])
 
 	events, err := fetchEvents(f.service.Redis, models.PaymentResource, &uuid.Nil, &uuid.Nil)
 
 	require.NoError(t, err)
 	require.Len(t, events, 3)
-	assert.Equal(t, int64(0), events[0].Version)
-	assert.Equal(t, int64(1), events[1].Version)
-	assert.Equal(t, int64(2), events[2].Version)
+	assert.Equal(t, int64(1), events[0].Version)
+	assert.Equal(t, int64(2), events[1].Version)
+	assert.Equal(t, int64(3), events[2].Version)
+}
+
+////////////////////////////////////////
+
+func TestFetchLocators(t *testing.T) {
+	t.Run("scan error in fetch locators", TestFetchLocators_ScanError)
+	t.Run("fetch locators with one batch in scan", TestFetchLocators_OneBatch)
+	t.Run("fetch locators with multiple batches in scan", TestFetchLocators_MultipleBatches)
+}
+
+func TestFetchLocators_ScanError(t *testing.T) {
+	f := SetupTest(t)
+	f.redis.
+		Command("SCAN", redigomock.NewAnyData(), redigomock.NewAnyData(), redigomock.NewAnyData()).
+		ExpectError(errors.New("redis scan error"))
+
+	_, err := fetchLocators(f.service.Redis, models.PaymentResource, &uuid.Nil, nil)
+
+	assert.EqualError(t, errors.Cause(err), "redis scan error")
+}
+
+func TestFetchLocators_OneBatch(t *testing.T) {
+	f := SetupTest(t)
+
+	k := []byte("v/Payment/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000")
+	f.redis.
+		Command("SCAN", uint8(0), redigomock.NewAnyData(), redigomock.NewAnyData()).
+		ExpectSlice([]byte("0"), []interface{}{k})
+
+	events, err := fetchLocators(f.service.Redis, models.PaymentResource, &uuid.Nil, &uuid.Nil)
+
+	require.NoError(t, err)
+	assert.Len(t, events, 1)
+}
+
+func TestFetchLocators_MultipleBatches(t *testing.T) {
+	f := SetupTest(t)
+	k := [][]byte{
+		[]byte("v/Payment/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000"),
+		[]byte("v/Payment/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000001"),
+	}
+	f.redis.
+		Command("SCAN", uint8(0), redigomock.NewAnyData(), redigomock.NewAnyData()).
+		ExpectSlice([]byte("1"), []interface{}{k[0]})
+	f.redis.
+		Command("SCAN", uint8(1), redigomock.NewAnyData(), redigomock.NewAnyData()).
+		ExpectSlice([]byte("0"), []interface{}{k[1]})
+
+	events, err := fetchLocators(f.service.Redis, models.PaymentResource, &uuid.Nil, &uuid.Nil)
+
+	require.NoError(t, err)
+	assert.Len(t, events, 2)
 }
 
 ////////////////////////////////////////

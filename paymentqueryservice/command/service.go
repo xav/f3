@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/apex/log"
 	"github.com/gomodule/redigo/redis"
@@ -33,8 +34,8 @@ import (
 
 type Start struct {
 	fetchEvents            func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID) ([]models.Event, error)
+	fetchLocators          func(rc redis.Conn, resourceType models.ResourceType, organizationID *uuid.UUID, resourceID *uuid.UUID) ([]models.ResourceLocator, error)
 	buildPaymentFromEvents func([]models.Event) (*models.Event, error)
-	scanResources          func(redis.Conn, models.ResourceType, *uuid.UUID, *uuid.UUID, uint8) (uint8, [][]byte, error)
 }
 
 var config = service.Config{}
@@ -43,8 +44,8 @@ var config = service.Config{}
 func NewStart() *Start {
 	return &Start{
 		fetchEvents:            fetchEvents,
+		fetchLocators:          fetchLocators,
 		buildPaymentFromEvents: buildPaymentFromEvents,
-		scanResources:          scanResources,
 	}
 }
 
@@ -171,7 +172,8 @@ func buildPaymentFromEvents(events []models.Event) (*models.Event, error) {
 	return evt, nil
 }
 
-func updatePayment(_, update *models.Payment) *models.Payment {
+// updatePayment updates the source payment with data from update.
+func updatePayment(source, update *models.Payment) *models.Payment {
 	// TODO(xav): apply diffs from update to the original payment instead of replacing it.
 	p := *update
 	return &p
@@ -184,14 +186,24 @@ func fetchEvents(rc redis.Conn, resourceType models.ResourceType, organizationID
 		events = make([]models.Event, 0)
 	)
 	for {
-		c, bb, err := scanResources(rc, resourceType, organizationID, resourceID, cursor)
+		c, bb, err := scanEventsKeys(rc, resourceType, organizationID, resourceID, cursor)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to fetch resource events")
+			return nil, errors.Wrap(err, "failed to scan event keys")
 		}
 
 		for _, b := range bb {
+			data, err := rc.Do("GET", b)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to retrieve event data for '%v'", string(b))
+			}
+			bytes, ok := data.([]byte)
+			if !ok {
+				return nil, errors.New("redis object data type not recognised")
+			}
+			log.Debugf("%T", data)
+
 			ev := models.Event{}
-			if err := json.Unmarshal(b, &ev); err != nil {
+			if err := json.Unmarshal(bytes, &ev); err != nil {
 				return nil, errors.Wrap(err, "failed to parse event data")
 			}
 			events = append(events, ev)
@@ -210,27 +222,89 @@ func fetchEvents(rc redis.Conn, resourceType models.ResourceType, organizationID
 	return events, nil
 }
 
-func scanResources(rc redis.Conn, resourceType models.ResourceType, organizationID *uuid.UUID, resourceID *uuid.UUID, cursor uint8) (uint8, [][]byte, error) {
-	getScanId := func(id *uuid.UUID) string {
-		if id == nil {
-			return "*"
+// fetchLocators returns all the resource locators for the specified organization id and resource id.
+// If an id is nil, a wildcard match is used.
+func fetchLocators(rc redis.Conn, resourceType models.ResourceType, organizationID *uuid.UUID, resourceID *uuid.UUID) ([]models.ResourceLocator, error) {
+	var (
+		cursor   = uint8(0)
+		locators = make([]models.ResourceLocator, 0)
+	)
+	for {
+		c, bb, err := scanVersionsKeys(rc, resourceType, organizationID, resourceID, cursor)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to fetch versions")
 		}
-		return id.String()
+
+		for _, b := range bb {
+			parts := strings.Split(string(b), "/")
+
+			resourceType := models.ResourceType(parts[1])
+			organisationID, err := uuid.Parse(parts[2])
+			if err != nil {
+				log.WithError(err).Errorf("failed to parse uuid '%v'", parts[2])
+			}
+			resourceID, err := uuid.Parse(parts[3])
+			if err != nil {
+				log.WithError(err).Errorf("failed to parse uuid '%v'", parts[2])
+			}
+
+			locators = append(locators, models.ResourceLocator{
+				ResourceType:   &resourceType,
+				OrganisationID: &organisationID,
+				ID:             &resourceID,
+			})
+		}
+
+		if c == 0 {
+			break
+		}
+		cursor = c
 	}
-	scanKey := fmt.Sprintf(models.EventKeyTemplate, resourceType, getScanId(organizationID), getScanId(resourceID), "*")
+
+	return locators, nil
+}
+
+// scanEventsKeys returns a batch of events for the specified locator.
+func scanEventsKeys(rc redis.Conn, resourceType models.ResourceType, organizationID *uuid.UUID, resourceID *uuid.UUID, cursor uint8) (uint8, [][]byte, error) {
+	scanKey := fmt.Sprintf(models.EventKeyTemplate, resourceType, scanId(organizationID), scanId(resourceID), "*")
 	items := make([][]byte, 0)
 
-	existing, err := redis.Values(rc.Do("SCAN", cursor, "MATCH", scanKey))
+	resources, err := redis.Values(rc.Do("SCAN", cursor, "MATCH", scanKey))
 	if err != nil {
 		return 0, nil, errors.Wrapf(err, "failed to scan '%v' resources '%v/%v'", resourceType, organizationID, resourceID)
 	}
-	if _, err := redis.Scan(existing, &cursor, &items); err != nil {
-		return 0, nil, errors.Wrap(err, "failed to parse resources list")
+	if _, err := redis.Scan(resources, &cursor, &items); err != nil {
+		return 0, nil, errors.Wrap(err, "failed to parse events scan")
 	}
 
 	return cursor, items, nil
 }
 
+// scanVersionsKeys returns a batch of locators keys for the specified locator.
+func scanVersionsKeys(rc redis.Conn, resourceType models.ResourceType, organizationID *uuid.UUID, resourceID *uuid.UUID, cursor uint8) (uint8, [][]byte, error) {
+	scanKey := fmt.Sprintf(models.VersionKeyTemplate, resourceType, scanId(organizationID), scanId(resourceID))
+	items := make([][]byte, 0)
+
+	versions, err := redis.Values(rc.Do("SCAN", cursor, "MATCH", scanKey))
+	if err != nil {
+		return 0, nil, errors.Wrapf(err, "failed to scan '%v' resources '%v/%v'", resourceType, organizationID, resourceID)
+	}
+	if _, err := redis.Scan(versions, &cursor, &items); err != nil {
+		return 0, nil, errors.Wrap(err, "failed to parse versions scan")
+	}
+
+	return cursor, items, nil
+}
+
+// scanId returns the valud of the id if present, or a scan wildcard if nil
+func scanId(id *uuid.UUID) string {
+	if id == nil {
+		return "*"
+	}
+	return id.String()
+}
+
+// replyWithError publish the error to the reply channel and returns the wrapped error.
 func replyWithError(conn f3nats.NatsConn, request *nats.Msg, err error, msg string) error {
 	if request == nil {
 		log.Error("request cannot be nil for reply")
