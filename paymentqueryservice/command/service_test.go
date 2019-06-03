@@ -19,6 +19,7 @@ import (
 	"strings"
 	"testing"
 
+	"cloud.google.com/go/civil"
 	"github.com/gomodule/redigo/redis"
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
@@ -30,7 +31,6 @@ import (
 	"github.com/xav/f3/f3nats/mocks"
 	"github.com/xav/f3/models"
 	"github.com/xav/f3/service"
-	"gopkg.in/mgo.v2/bson"
 )
 
 func jsonMarshal(t *testing.T, v interface{}) []byte {
@@ -40,15 +40,6 @@ func jsonMarshal(t *testing.T, v interface{}) []byte {
 		t.Fatal(err)
 	}
 	return j
-}
-
-func bsonMarshal(t *testing.T, v interface{}) []byte {
-	t.Helper()
-	b, err := bson.Marshal(v)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return b
 }
 
 type PaymentServiceTestFixture struct {
@@ -269,14 +260,14 @@ func TestBuildPaymentFromEvents_NoEvents(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, evt)
 	require.Equal(t, models.ResourceNotFoundEvent, evt.EventType)
-	require.Nil(t, evt.Resource)
+	require.Equal(t, "", evt.Resource)
 }
 
 func TestBuildPaymentFromEvents_NilEvents(t *testing.T) {
 	evt, err := buildPaymentFromEvents(nil)
 	require.NoError(t, err)
 	assert.Equal(t, models.ResourceNotFoundEvent, evt.EventType)
-	require.Nil(t, evt.Resource)
+	require.Equal(t, "", evt.Resource)
 }
 
 func TestBuildPaymentFromEvents_BadSequenceStart(t *testing.T) {
@@ -290,7 +281,7 @@ func TestBuildPaymentFromEvents_BadSequenceStart(t *testing.T) {
 func TestBuildPaymentFromEvents_BadSequenceStartResource(t *testing.T) {
 	events := []models.Event{{
 		EventType: models.CreatePaymentEvent,
-		Resource:  struct{}{},
+		Resource:  "//",
 	}}
 	_, err := buildPaymentFromEvents(events)
 	assert.EqualError(t, errors.Cause(err), "invalid event: the create event resource is not 'Payment'")
@@ -301,11 +292,18 @@ func TestBuildPaymentFromEvents_NoUpdates(t *testing.T) {
 		EventType: models.CreatePaymentEvent,
 		Version:   1,
 		CreatedAt: 499137600,
-		Resource: &models.Payment{
+		Resource: string(jsonMarshal(t, models.Payment{
+			OrganisationID: uuid.New(),
+			ID:             uuid.New(),
 			Attributes: &models.PaymentAttributes{
+				ProcessingDate: civil.Date{
+					Year:  2015,
+					Month: 10,
+					Day:   21,
+				},
 				Amount: 42,
 			},
-		},
+		})),
 	}}
 	evt, err := buildPaymentFromEvents(events)
 
@@ -317,8 +315,9 @@ func TestBuildPaymentFromEvents_NoUpdates(t *testing.T) {
 	require.Equal(t, int64(499137600), *evt.UpdatedAt)
 
 	require.NotNil(t, evt.Resource)
-	require.IsType(t, &models.Payment{}, evt.Resource)
-	p := evt.Resource.(*models.Payment)
+	p := models.Payment{}
+	err = json.Unmarshal([]byte(evt.Resource), &p)
+	require.NoError(t, err)
 	assert.Equal(t, float32(42), p.Attributes.Amount)
 }
 
@@ -327,20 +326,30 @@ func TestBuildPaymentFromEvents_Updates(t *testing.T) {
 		EventType: models.CreatePaymentEvent,
 		Version:   1,
 		CreatedAt: 499137600,
-		Resource: &models.Payment{
+		Resource: string(jsonMarshal(t, models.Payment{
 			Attributes: &models.PaymentAttributes{
+				ProcessingDate: civil.Date{
+					Year:  2015,
+					Month: 10,
+					Day:   21,
+				},
 				Amount: 42,
 			},
-		},
+		})),
 	}, {
 		EventType: models.UpdatePaymentEvent,
 		Version:   2,
 		CreatedAt: 1445444940,
-		Resource: &models.Payment{
+		Resource: string(jsonMarshal(t, models.Payment{
 			Attributes: &models.PaymentAttributes{
+				ProcessingDate: civil.Date{
+					Year:  2015,
+					Month: 10,
+					Day:   21,
+				},
 				Amount: 2.718,
 			},
-		},
+		})),
 	}}
 	evt, err := buildPaymentFromEvents(events)
 
@@ -352,8 +361,8 @@ func TestBuildPaymentFromEvents_Updates(t *testing.T) {
 	require.Equal(t, int64(1445444940), *evt.UpdatedAt)
 
 	require.NotNil(t, evt.Resource)
-	require.IsType(t, &models.Payment{}, evt.Resource)
-	p := evt.Resource.(*models.Payment)
+	p := models.Payment{}
+	err = json.Unmarshal([]byte(evt.Resource), &p)
 	assert.Equal(t, float32(2.718), p.Attributes.Amount)
 }
 
@@ -362,14 +371,19 @@ func TestBuildPaymentFromEvents_UpdatesBadResource(t *testing.T) {
 		EventType: models.CreatePaymentEvent,
 		Version:   1,
 		CreatedAt: 499137600,
-		Resource: &models.Payment{
+		Resource: string(jsonMarshal(t, models.Payment{
 			Attributes: &models.PaymentAttributes{
+				ProcessingDate: civil.Date{
+					Year:  2015,
+					Month: 10,
+					Day:   21,
+				},
 				Amount: 42,
 			},
-		},
+		})),
 	}, {
 		EventType: models.UpdatePaymentEvent,
-		Resource:  &struct{}{},
+		Resource:  "//",
 	}}
 	_, err := buildPaymentFromEvents(events)
 	assert.EqualError(t, errors.Cause(err), "invalid event: the update event resource is not 'Payment'")
@@ -380,20 +394,30 @@ func TestBuildPaymentFromEvents_UpdatesBadEventType(t *testing.T) {
 		EventType: models.CreatePaymentEvent,
 		Version:   1,
 		CreatedAt: 499137600,
-		Resource: &models.Payment{
+		Resource: string(jsonMarshal(t, models.Payment{
 			Attributes: &models.PaymentAttributes{
+				ProcessingDate: civil.Date{
+					Year:  2015,
+					Month: 10,
+					Day:   21,
+				},
 				Amount: 42,
 			},
-		},
+		})),
 	}, {
 		EventType: "bad_event",
 		Version:   2,
 		CreatedAt: 1445444940,
-		Resource: &models.Payment{
+		Resource: string(jsonMarshal(t, models.Payment{
 			Attributes: &models.PaymentAttributes{
+				ProcessingDate: civil.Date{
+					Year:  2015,
+					Month: 10,
+					Day:   21,
+				},
 				Amount: 2.718,
 			},
-		},
+		})),
 	}}
 	_, err := buildPaymentFromEvents(events)
 	assert.EqualError(t, errors.Cause(err), "unrecognised event type: 'bad_event'")
@@ -404,11 +428,16 @@ func TestBuildPaymentFromEvents_Deleted(t *testing.T) {
 		EventType: models.CreatePaymentEvent,
 		Version:   1,
 		CreatedAt: 499137600,
-		Resource: &models.Payment{
+		Resource: string(jsonMarshal(t, models.Payment{
 			Attributes: &models.PaymentAttributes{
+				ProcessingDate: civil.Date{
+					Year:  2015,
+					Month: 10,
+					Day:   21,
+				},
 				Amount: 42,
 			},
-		},
+		})),
 	}, {
 		EventType: models.DeletePaymentEvent,
 		Version:   2,
@@ -424,7 +453,7 @@ func TestBuildPaymentFromEvents_Deleted(t *testing.T) {
 	require.NotNil(t, evt.UpdatedAt)
 	require.Equal(t, int64(1445444940), *evt.UpdatedAt)
 
-	require.Nil(t, evt.Resource)
+	require.Equal(t, "", evt.Resource)
 }
 
 func TestBuildPaymentFromEvents_DeletedUpdate(t *testing.T) {
@@ -432,11 +461,16 @@ func TestBuildPaymentFromEvents_DeletedUpdate(t *testing.T) {
 		EventType: models.CreatePaymentEvent,
 		Version:   1,
 		CreatedAt: 499137600,
-		Resource: &models.Payment{
+		Resource: string(jsonMarshal(t, models.Payment{
 			Attributes: &models.PaymentAttributes{
+				ProcessingDate: civil.Date{
+					Year:  2015,
+					Month: 10,
+					Day:   21,
+				},
 				Amount: 42,
 			},
-		},
+		})),
 	}, {
 		EventType: models.DeletePaymentEvent,
 		Version:   2,
@@ -445,11 +479,16 @@ func TestBuildPaymentFromEvents_DeletedUpdate(t *testing.T) {
 		EventType: models.UpdatePaymentEvent,
 		Version:   3,
 		CreatedAt: 1445444940,
-		Resource: &models.Payment{
+		Resource: string(jsonMarshal(t, models.Payment{
 			Attributes: &models.PaymentAttributes{
+				ProcessingDate: civil.Date{
+					Year:  2015,
+					Month: 10,
+					Day:   21,
+				},
 				Amount: 299792,
 			},
-		},
+		})),
 	}}
 
 	evt, err := buildPaymentFromEvents(events)
@@ -461,14 +500,14 @@ func TestBuildPaymentFromEvents_DeletedUpdate(t *testing.T) {
 	require.NotNil(t, evt.UpdatedAt)
 	require.Equal(t, int64(872820840), *evt.UpdatedAt)
 
-	require.Nil(t, evt.Resource)
+	require.Equal(t, "", evt.Resource)
 }
 
 ////////////////////////////////////////
 
 func TestHandleFetchPayment(t *testing.T) {
 	t.Run("fetch payment with no reply inbox", TestHandleFetchPayment_NoReply)
-	t.Run("fetch payment with invalid locator bson", TestHandleFetchPayment_InvalidLocator)
+	t.Run("fetch payment with invalid locator", TestHandleFetchPayment_InvalidLocator)
 	t.Run("fetch payment where fetch events fails", TestHandleFetchPayment_FetchEventsError)
 	t.Run("fetch payment where no events are found", TestHandleFetchPayment_NoEvents)
 	t.Run("fetch payment where the payment build fails", TestHandleFetchPayment_BuildError)
@@ -482,7 +521,7 @@ func TestHandleFetchPayment_NoReply(t *testing.T) {
 	err := s.HandleFetchPayment(f.service, &nats.Msg{
 		Subject: string(models.FetchPaymentEvent),
 		Reply:   "",
-		Data:    bsonMarshal(t, models.ResourceLocator{}),
+		Data:    jsonMarshal(t, models.ResourceLocator{}),
 		Sub:     nil,
 	})
 	assert.EqualError(t, errors.Cause(err), "reply inbox missing from fetch message")
@@ -494,23 +533,28 @@ func TestHandleFetchPayment_InvalidLocator(t *testing.T) {
 
 	f.nats.
 		On("Publish", "reply", mock.MatchedBy(func(data []byte) bool {
-			e := models.ServiceError{}
-			if err := bson.Unmarshal(data, &e); err != nil {
+			e := models.Event{}
+			if err := json.Unmarshal(data, &e); err != nil {
 				t.Error("failed to unmarshal publish data")
 				return false
 			}
-			return e.Cause == "failed to unmarshal create event locator"
+			se := models.ServiceError{}
+			if err := json.Unmarshal([]byte(e.Resource), &se); err != nil {
+				t.Error("failed to unmarshal publish data")
+				return false
+			}
+			return se.Cause == "failed to unmarshal create event locator"
 		})).
 		Return(nil)
 
 	err := s.HandleFetchPayment(f.service, &nats.Msg{
 		Subject: string(models.FetchPaymentEvent),
 		Reply:   "reply",
-		Data:    []byte(("not_bson")),
+		Data:    []byte("//"),
 		Sub:     nil,
 	})
 
-	assert.EqualError(t, errors.Cause(err), "Document is corrupted")
+	assert.EqualError(t, errors.Cause(err), "invalid character '/' looking for beginning of value")
 }
 
 func TestHandleFetchPayment_FetchEventsError(t *testing.T) {
@@ -522,20 +566,24 @@ func TestHandleFetchPayment_FetchEventsError(t *testing.T) {
 	})
 	f.nats.
 		On("Publish", "reply", mock.MatchedBy(func(data []byte) bool {
-			e := models.ServiceError{}
-			if err := bson.Unmarshal(data, &e); err != nil {
+			e := models.Event{}
+			if err := json.Unmarshal(data, &e); err != nil {
 				t.Error("failed to unmarshal publish data")
 				return false
 			}
-
-			return strings.HasPrefix(e.Cause, "failed to fetch payment events for ")
+			se := models.ServiceError{}
+			if err := json.Unmarshal([]byte(e.Resource), &se); err != nil {
+				t.Error("failed to unmarshal publish data")
+				return false
+			}
+			return strings.HasPrefix(se.Cause, "failed to fetch payment events for ")
 		})).
 		Return(nil)
 
 	err := s.HandleFetchPayment(f.service, &nats.Msg{
 		Subject: string(models.FetchPaymentEvent),
 		Reply:   "reply",
-		Data:    bsonMarshal(t, models.ResourceLocator{}),
+		Data:    jsonMarshal(t, models.ResourceLocator{}),
 		Sub:     nil,
 	})
 
@@ -554,7 +602,7 @@ func TestHandleFetchPayment_NoEvents(t *testing.T) {
 	f.nats.
 		On("Publish", "reply", mock.MatchedBy(func(data []byte) bool {
 			evt := models.Event{}
-			if err := bson.Unmarshal(data, &evt); err != nil {
+			if err := json.Unmarshal(data, &evt); err != nil {
 				t.Error("failed to unmarshal publish data")
 				return false
 			}
@@ -566,7 +614,7 @@ func TestHandleFetchPayment_NoEvents(t *testing.T) {
 	err := s.HandleFetchPayment(f.service, &nats.Msg{
 		Subject: string(models.FetchPaymentEvent),
 		Reply:   "reply",
-		Data:    bsonMarshal(t, models.ResourceLocator{}),
+		Data:    jsonMarshal(t, models.ResourceLocator{}),
 		Sub:     nil,
 	})
 
@@ -583,21 +631,24 @@ func TestHandleFetchPayment_BuildError(t *testing.T) {
 
 	f.nats.
 		On("Publish", "reply", mock.MatchedBy(func(data []byte) bool {
-			e := models.ServiceError{}
-			if err := bson.Unmarshal(data, &e); err != nil {
+			e := models.Event{}
+			if err := json.Unmarshal(data, &e); err != nil {
 				t.Error("failed to unmarshal publish data")
 				return false
 			}
-
-			return strings.HasPrefix(e.Cause, "failed to build payment from events for ")
+			se := models.ServiceError{}
+			if err := json.Unmarshal([]byte(e.Resource), &se); err != nil {
+				t.Error("failed to unmarshal publish data")
+				return false
+			}
+			return strings.HasPrefix(se.Cause, "failed to build payment from events for ")
 		})).
 		Return(nil)
 
 	err := s.HandleFetchPayment(f.service, &nats.Msg{
 		Subject: string(models.FetchPaymentEvent),
 		Reply:   "reply",
-		Data:    bsonMarshal(t, models.ResourceLocator{}),
-		Sub:     nil,
+		Data:    jsonMarshal(t, models.ResourceLocator{}),
 	})
 
 	assert.EqualError(t, errors.Cause(err), "build error")
@@ -613,7 +664,7 @@ func TestHandleFetchPayment_DeletedPayment(t *testing.T) {
 				Version:   2,
 				CreatedAt: 499137600,
 				UpdatedAt: &deletedDate,
-				Resource:  nil,
+				Resource:  "",
 			}, nil
 		},
 	})
@@ -621,7 +672,7 @@ func TestHandleFetchPayment_DeletedPayment(t *testing.T) {
 	f.nats.
 		On("Publish", "reply", mock.MatchedBy(func(data []byte) bool {
 			evt := models.Event{}
-			if err := bson.Unmarshal(data, &evt); err != nil {
+			if err := json.Unmarshal(data, &evt); err != nil {
 				t.Error("failed to unmarshal publish data")
 				return false
 			}
@@ -633,7 +684,7 @@ func TestHandleFetchPayment_DeletedPayment(t *testing.T) {
 	err := s.HandleFetchPayment(f.service, &nats.Msg{
 		Subject: string(models.FetchPaymentEvent),
 		Reply:   "reply",
-		Data:    bsonMarshal(t, models.ResourceLocator{}),
+		Data:    jsonMarshal(t, models.ResourceLocator{}),
 		Sub:     nil,
 	})
 
@@ -651,9 +702,9 @@ func TestHandleFetchPayment_Payment(t *testing.T) {
 				Version:   2,
 				CreatedAt: 499137600,
 				UpdatedAt: &updatedDate,
-				Resource: &models.Payment{
+				Resource: string(jsonMarshal(t, models.Payment{
 					ID: resourceID,
-				},
+				})),
 			}, nil
 		},
 	})
@@ -661,7 +712,7 @@ func TestHandleFetchPayment_Payment(t *testing.T) {
 	f.nats.
 		On("Publish", "reply", mock.MatchedBy(func(data []byte) bool {
 			evt := models.Event{}
-			if err := bson.Unmarshal(data, &evt); err != nil {
+			if err := json.Unmarshal(data, &evt); err != nil {
 				t.Error("failed to unmarshal publish data")
 				return false
 			}
@@ -673,7 +724,7 @@ func TestHandleFetchPayment_Payment(t *testing.T) {
 	err := s.HandleFetchPayment(f.service, &nats.Msg{
 		Subject: string(models.FetchPaymentEvent),
 		Reply:   "reply",
-		Data:    bsonMarshal(t, models.ResourceLocator{}),
+		Data:    jsonMarshal(t, models.ResourceLocator{}),
 		Sub:     nil,
 	})
 
@@ -684,7 +735,7 @@ func TestHandleFetchPayment_Payment(t *testing.T) {
 
 func TestHandleListPayment(t *testing.T) {
 	t.Run("fetch payment with no reply inbox", TestHandleListPayment_NoReply)
-	t.Run("fetch payment with invalid locator bson", TestHandleListPayment_InvalidLocator)
+	t.Run("fetch payment with invalid locator", TestHandleListPayment_InvalidLocator)
 	t.Run("fetch payment where fetch locators fails", TestHandleListPayment_FetchLocatorsError)
 	t.Run("fetch payment where fetch locators returns nothing", TestHandleListPayment_NoLocators)
 	t.Run("fetch payment where fetch events fails", TestHandleListPayment_FetchEventsError)
@@ -699,7 +750,7 @@ func TestHandleListPayment_NoReply(t *testing.T) {
 	err := s.HandleListPayment(f.service, &nats.Msg{
 		Subject: string(models.ListPaymentEvent),
 		Reply:   "",
-		Data:    bsonMarshal(t, models.ResourceLocator{}),
+		Data:    jsonMarshal(t, models.ResourceLocator{}),
 		Sub:     nil,
 	})
 	assert.EqualError(t, errors.Cause(err), "reply inbox missing from fetch message")
@@ -711,23 +762,28 @@ func TestHandleListPayment_InvalidLocator(t *testing.T) {
 
 	f.nats.
 		On("Publish", "reply", mock.MatchedBy(func(data []byte) bool {
-			e := models.ServiceError{}
-			if err := bson.Unmarshal(data, &e); err != nil {
+			e := models.Event{}
+			if err := json.Unmarshal(data, &e); err != nil {
 				t.Error("failed to unmarshal publish data")
 				return false
 			}
-			return e.Cause == "failed to unmarshal create event locator"
+			se := models.ServiceError{}
+			if err := json.Unmarshal([]byte(e.Resource), &se); err != nil {
+				t.Error("failed to unmarshal publish data")
+				return false
+			}
+			return se.Cause == "failed to unmarshal create event locator"
 		})).
 		Return(nil)
 
 	err := s.HandleListPayment(f.service, &nats.Msg{
 		Subject: string(models.ListPaymentEvent),
 		Reply:   "reply",
-		Data:    []byte(("not_bson")),
+		Data:    []byte(("//")),
 		Sub:     nil,
 	})
 
-	assert.EqualError(t, errors.Cause(err), "Document is corrupted")
+	assert.EqualError(t, errors.Cause(err), "invalid character '/' looking for beginning of value")
 }
 
 func TestHandleListPayment_FetchLocatorsError(t *testing.T) {
@@ -739,20 +795,24 @@ func TestHandleListPayment_FetchLocatorsError(t *testing.T) {
 	})
 	f.nats.
 		On("Publish", "reply", mock.MatchedBy(func(data []byte) bool {
-			e := models.ServiceError{}
-			if err := bson.Unmarshal(data, &e); err != nil {
+			e := models.Event{}
+			if err := json.Unmarshal(data, &e); err != nil {
 				t.Error("failed to unmarshal publish data")
 				return false
 			}
-
-			return strings.HasPrefix(e.Cause, "failed to fetch payment locators for ")
+			se := models.ServiceError{}
+			if err := json.Unmarshal([]byte(e.Resource), &se); err != nil {
+				t.Error("failed to unmarshal publish data")
+				return false
+			}
+			return strings.HasPrefix(se.Cause, "failed to fetch payment locators for ")
 		})).
 		Return(nil)
 
 	err := s.HandleListPayment(f.service, &nats.Msg{
 		Subject: string(models.ListPaymentEvent),
 		Reply:   "reply",
-		Data:    bsonMarshal(t, models.ResourceLocator{}),
+		Data:    jsonMarshal(t, models.ResourceLocator{}),
 		Sub:     nil,
 	})
 
@@ -765,13 +825,14 @@ func TestHandleListPayment_NoLocators(t *testing.T) {
 	f.nats.
 		On("Publish", "reply", mock.MatchedBy(func(data []byte) bool {
 			e := models.Event{}
-			if err := bson.Unmarshal(data, &e); err != nil {
+			if err := json.Unmarshal(data, &e); err != nil {
 				t.Error("failed to unmarshal publish data")
 				return false
 			}
 
 			require.Equal(t, models.ResourceFoundEvent, e.EventType)
-			assert.Len(t, e.Resource.([]interface{}), 0)
+
+			assert.Equal(t, "[]", e.Resource)
 			return true
 		})).
 		Return(nil)
@@ -779,7 +840,7 @@ func TestHandleListPayment_NoLocators(t *testing.T) {
 	err := s.HandleListPayment(f.service, &nats.Msg{
 		Subject: string(models.ListPaymentEvent),
 		Reply:   "reply",
-		Data:    bsonMarshal(t, models.ResourceLocator{}),
+		Data:    jsonMarshal(t, models.ResourceLocator{}),
 		Sub:     nil,
 	})
 
@@ -805,20 +866,24 @@ func TestHandleListPayment_FetchEventsError(t *testing.T) {
 	})
 	f.nats.
 		On("Publish", "reply", mock.MatchedBy(func(data []byte) bool {
-			e := models.ServiceError{}
-			if err := bson.Unmarshal(data, &e); err != nil {
+			e := models.Event{}
+			if err := json.Unmarshal(data, &e); err != nil {
 				t.Error("failed to unmarshal publish data")
 				return false
 			}
-
-			return strings.HasPrefix(e.Cause, "failed to fetch payment events for ")
+			se := models.ServiceError{}
+			if err := json.Unmarshal([]byte(e.Resource), &se); err != nil {
+				t.Error("failed to unmarshal publish data")
+				return false
+			}
+			return strings.HasPrefix(se.Cause, "failed to fetch payment events for ")
 		})).
 		Return(nil)
 
 	err := s.HandleListPayment(f.service, &nats.Msg{
 		Subject: string(models.ListPaymentEvent),
 		Reply:   "reply",
-		Data:    bsonMarshal(t, models.ResourceLocator{}),
+		Data:    jsonMarshal(t, models.ResourceLocator{}),
 		Sub:     nil,
 	})
 
@@ -847,13 +912,13 @@ func TestHandleListPayment_NoEventsOrDeleted(t *testing.T) {
 	f.nats.
 		On("Publish", "reply", mock.MatchedBy(func(data []byte) bool {
 			e := models.Event{}
-			if err := bson.Unmarshal(data, &e); err != nil {
+			if err := json.Unmarshal(data, &e); err != nil {
 				t.Error("failed to unmarshal publish data")
 				return false
 			}
 
 			require.Equal(t, models.ResourceFoundEvent, e.EventType)
-			assert.Len(t, e.Resource.([]interface{}), 0)
+			assert.Equal(t, "[]", e.Resource)
 			return true
 		})).
 		Return(nil)
@@ -861,7 +926,7 @@ func TestHandleListPayment_NoEventsOrDeleted(t *testing.T) {
 	err := s.HandleListPayment(f.service, &nats.Msg{
 		Subject: string(models.ListPaymentEvent),
 		Reply:   "reply",
-		Data:    bsonMarshal(t, models.ResourceLocator{}),
+		Data:    jsonMarshal(t, models.ResourceLocator{}),
 		Sub:     nil,
 	})
 
@@ -887,20 +952,24 @@ func TestHandleListPayment_BuildError(t *testing.T) {
 	})
 	f.nats.
 		On("Publish", "reply", mock.MatchedBy(func(data []byte) bool {
-			e := models.ServiceError{}
-			if err := bson.Unmarshal(data, &e); err != nil {
+			e := models.Event{}
+			if err := json.Unmarshal(data, &e); err != nil {
 				t.Error("failed to unmarshal publish data")
 				return false
 			}
-
-			return strings.HasPrefix(e.Cause, "failed to build payment from events for ")
+			se := models.ServiceError{}
+			if err := json.Unmarshal([]byte(e.Resource), &se); err != nil {
+				t.Error("failed to unmarshal publish data")
+				return false
+			}
+			return strings.HasPrefix(se.Cause, "failed to build payment from events for ")
 		})).
 		Return(nil)
 
 	err := s.HandleListPayment(f.service, &nats.Msg{
 		Subject: string(models.ListPaymentEvent),
 		Reply:   "reply",
-		Data:    bsonMarshal(t, models.ResourceLocator{}),
+		Data:    jsonMarshal(t, models.ResourceLocator{}),
 		Sub:     nil,
 	})
 
@@ -927,20 +996,25 @@ func TestHandleListPayment_Payment(t *testing.T) {
 				Version:   1,
 				CreatedAt: 499137600,
 				UpdatedAt: &updateDate,
-				Resource:  &models.Payment{},
+				Resource:  string(jsonMarshal(t, models.Payment{})),
 			}, nil
 		},
 	})
 	f.nats.
 		On("Publish", "reply", mock.MatchedBy(func(data []byte) bool {
 			e := models.Event{}
-			if err := bson.Unmarshal(data, &e); err != nil {
+			if err := json.Unmarshal(data, &e); err != nil {
 				t.Error("failed to unmarshal publish data")
 				return false
 			}
 
 			require.Equal(t, models.ResourceFoundEvent, e.EventType)
-			assert.Len(t, e.Resource.([]interface{}), 1)
+			p := make([]models.Payment, 0)
+			if err := json.Unmarshal([]byte(e.Resource), &p); err != nil {
+				t.Error("failed to unmarshal publish data")
+				return false
+			}
+			assert.Len(t, p, 1)
 			return true
 		})).
 		Return(nil)
@@ -948,7 +1022,7 @@ func TestHandleListPayment_Payment(t *testing.T) {
 	err := s.HandleListPayment(f.service, &nats.Msg{
 		Subject: string(models.ListPaymentEvent),
 		Reply:   "reply",
-		Data:    bsonMarshal(t, models.ResourceLocator{}),
+		Data:    jsonMarshal(t, models.ResourceLocator{}),
 		Sub:     nil,
 	})
 

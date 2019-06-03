@@ -28,7 +28,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/xav/f3/models"
 	"github.com/xav/f3/service"
-	"gopkg.in/mgo.v2/bson"
 )
 
 type Start struct {
@@ -83,7 +82,7 @@ func (c *Start) HandleFetchPayment(s *service.Service, msg *nats.Msg) error {
 
 	// Decode the event
 	locator := models.ResourceLocator{}
-	if err := bson.Unmarshal(msg.Data, &locator); err != nil {
+	if err := json.Unmarshal(msg.Data, &locator); err != nil {
 		return s.ReplyWithError(msg, err, "failed to unmarshal create event locator")
 	}
 
@@ -100,7 +99,7 @@ func (c *Start) HandleFetchPayment(s *service.Service, msg *nats.Msg) error {
 	}
 
 	// Publish the result on the reply subject
-	data, err := bson.Marshal(evt)
+	data, err := json.Marshal(evt)
 	if err != nil {
 		return errors.Wrap(err, "failed to encode fetch request reply")
 	}
@@ -120,7 +119,7 @@ func (c *Start) HandleListPayment(s *service.Service, msg *nats.Msg) error {
 
 	// Decode the event
 	locator := models.ResourceLocator{}
-	if err := bson.Unmarshal(msg.Data, &locator); err != nil {
+	if err := json.Unmarshal(msg.Data, &locator); err != nil {
 		return s.ReplyWithError(msg, err, "failed to unmarshal create event locator")
 	}
 
@@ -147,7 +146,11 @@ func (c *Start) HandleListPayment(s *service.Service, msg *nats.Msg) error {
 
 		switch evt.EventType {
 		case models.ResourceFoundEvent:
-			payments = append(payments, evt.Resource.(*models.Payment))
+			p := &models.Payment{}
+			if err = json.Unmarshal([]byte(evt.Resource), p); err != nil {
+				return s.ReplyWithError(msg, err, "failed to decode payment data")
+			}
+			payments = append(payments, p)
 		case models.ResourceNotFoundEvent:
 			// 	Payment was deleted, don't add it
 		default:
@@ -156,9 +159,13 @@ func (c *Start) HandleListPayment(s *service.Service, msg *nats.Msg) error {
 	}
 
 	// Publish the result on the reply subject
-	data, err := bson.Marshal(models.Event{
+	paymentBytes, err := json.Marshal(payments)
+	if err != nil {
+		return errors.Wrap(err, "failed to encode payment list data")
+	}
+	data, err := json.Marshal(models.Event{
 		EventType: models.ResourceFoundEvent,
-		Resource:  payments,
+		Resource:  string(paymentBytes),
 	})
 	if err != nil {
 		return errors.Wrap(err, "failed to encode list request reply")
@@ -186,8 +193,8 @@ func buildPaymentFromEvents(events []models.Event) (*models.Event, error) {
 	if events[0].EventType != models.CreatePaymentEvent {
 		return nil, errors.New("invalid events sequence: sequence should start with a create event")
 	}
-	payment, ok := events[0].Resource.(*models.Payment)
-	if !ok {
+	payment := &models.Payment{}
+	if err := json.Unmarshal([]byte(events[0].Resource), payment); err != nil {
 		return nil, errors.New("invalid event: the create event resource is not 'Payment'")
 	}
 
@@ -197,32 +204,38 @@ func buildPaymentFromEvents(events []models.Event) (*models.Event, error) {
 		Version:   events[0].Version,
 		CreatedAt: events[0].CreatedAt,
 		UpdatedAt: &events[0].CreatedAt,
-		Resource:  payment,
+		// Resource:  payment,
 	}
 
 	// Apply the rest of the events and update the return event accordingly.
 	for _, ev := range events[1:] {
 		switch ev.EventType {
 		case models.UpdatePaymentEvent:
-			update, ok := ev.Resource.(*models.Payment)
-			if !ok {
+			update := &models.Payment{}
+			if err := json.Unmarshal([]byte(ev.Resource), update); err != nil {
 				return nil, errors.New("invalid event: the update event resource is not 'Payment'")
 			}
+
 			payment = updatePayment(payment, update)
-			evt.Resource = payment
+			// evt.Resource = payment
 			evt.Version = ev.Version
 			evt.UpdatedAt = &ev.CreatedAt
 		case models.DeletePaymentEvent:
 			evt.EventType = models.ResourceNotFoundEvent
 			evt.Version = ev.Version
 			evt.UpdatedAt = &ev.CreatedAt
-			evt.Resource = nil
+			evt.Resource = ""
 			return evt, nil
 		default:
 			return nil, errors.Errorf("unrecognised event type: '%v'", ev.EventType)
 		}
 	}
 
+	paymentBytes, err := json.Marshal(payment)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to encode payment data")
+	}
+	evt.Resource = string(paymentBytes)
 	return evt, nil
 }
 

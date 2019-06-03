@@ -15,6 +15,7 @@
 package service
 
 import (
+	"encoding/json"
 	"os"
 	"os/signal"
 	"time"
@@ -25,7 +26,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/xav/f3/f3nats"
 	"github.com/xav/f3/models"
-	"gopkg.in/mgo.v2/bson"
 )
 
 type Config struct {
@@ -132,17 +132,21 @@ func (s *Service) ReplyWithError(request *nats.Msg, err error, msg string) error
 	}
 
 	if request.Reply != "" {
+		errBytes, err := json.Marshal(models.ServiceError{
+			Cause:   msg,
+			Request: request,
+		})
+		if err != nil {
+			log.Errorf("failed to encode service error (%v)", msg)
+		}
 		ev := models.Event{
 			EventType: models.ServiceErrorEvent,
 			Version:   0,
 			CreatedAt: time.Now().Unix(),
-			Resource: &models.ServiceError{
-				Cause:   msg,
-				Request: request,
-			},
+			Resource:  string(errBytes),
 		}
 
-		data, err := bson.Marshal(ev)
+		data, err := json.Marshal(ev)
 		if err != nil {
 			log.Errorf("failed to marshal service error (%v)", msg)
 			return errors.Wrap(err, msg)
@@ -151,7 +155,6 @@ func (s *Service) ReplyWithError(request *nats.Msg, err error, msg string) error
 		if err := s.Nats.Publish(request.Reply, data); err != nil {
 			log.Errorf("failed to post error reply to '%v'", request.Reply)
 		}
-
 	}
 
 	return errors.Wrap(err, msg)

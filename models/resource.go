@@ -25,7 +25,7 @@ const (
 )
 
 type ResourceLocator struct {
-	ResourceType   *ResourceType `json:"resource_type" bson:"resource_type"`
-	OrganisationID *uuid.UUID    `json:"organisation_id" bson:"organisation_id"`
-	ID             *uuid.UUID    `json:"id"              bson:"id"`
+	ResourceType   *ResourceType `json:"resource_type"`
+	OrganisationID *uuid.UUID    `json:"organisation_id"`
+	ID             *uuid.UUID    `json:"id"`
 }

@@ -27,7 +27,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/xav/f3/models"
 	"github.com/xav/f3/service"
-	"gopkg.in/mgo.v2/bson"
 )
 
 type Start struct {
@@ -74,7 +73,7 @@ func (c *Start) start(cmd *cobra.Command, args []string) {
 func (c *Start) HandleCreatePayment(s *service.Service, msg *nats.Msg) error {
 	// Decode the event
 	payment := models.Payment{}
-	if err := bson.Unmarshal(msg.Data, &payment); err != nil {
+	if err := json.Unmarshal(msg.Data, &payment); err != nil {
 		return errors.Wrap(err, "failed to unmarshal create payment event")
 	}
 
@@ -95,11 +94,15 @@ func (c *Start) HandleCreatePayment(s *service.Service, msg *nats.Msg) error {
 	}
 
 	// Save the event to the store
+	paymentBytes, err := json.Marshal(payment)
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal payment data")
+	}
 	bytes, err := json.Marshal(models.Event{
 		EventType: models.CreatePaymentEvent,
 		Version:   version.(int64),
 		CreatedAt: time.Now().Unix(),
-		Resource:  &payment,
+		Resource:  string(paymentBytes),
 	})
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal event data")
@@ -124,7 +127,7 @@ func (c *Start) HandleCreatePayment(s *service.Service, msg *nats.Msg) error {
 func (c *Start) HandleUpdatePayment(s *service.Service, msg *nats.Msg) error {
 	// Decode the event
 	payment := models.Payment{}
-	if err := bson.Unmarshal(msg.Data, &payment); err != nil {
+	if err := json.Unmarshal(msg.Data, &payment); err != nil {
 		return errors.Wrap(err, "failed to unmarshal update payment event")
 	}
 
@@ -145,11 +148,15 @@ func (c *Start) HandleUpdatePayment(s *service.Service, msg *nats.Msg) error {
 	}
 
 	// Save the event to the store
+	paymentBytes, err := json.Marshal(payment)
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal payment data")
+	}
 	bytes, err := json.Marshal(models.Event{
 		EventType: models.UpdatePaymentEvent,
 		Version:   version.(int64),
 		CreatedAt: time.Now().Unix(),
-		Resource:  &payment,
+		Resource:  string(paymentBytes),
 	})
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal event data")
@@ -174,7 +181,7 @@ func (c *Start) HandleUpdatePayment(s *service.Service, msg *nats.Msg) error {
 func (c *Start) HandleDeletePayment(s *service.Service, msg *nats.Msg) error {
 	// Decode the event
 	locator := models.ResourceLocator{}
-	if err := bson.Unmarshal(msg.Data, &locator); err != nil {
+	if err := json.Unmarshal(msg.Data, &locator); err != nil {
 		return errors.Wrap(err, "failed to unmarshal delete payment event")
 	}
 
@@ -195,11 +202,15 @@ func (c *Start) HandleDeletePayment(s *service.Service, msg *nats.Msg) error {
 	}
 
 	// Save the event to the store
+	locatorBytes, err := json.Marshal(locator)
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal payment data")
+	}
 	bytes, err := json.Marshal(models.Event{
 		EventType: models.DeletePaymentEvent,
 		Version:   version.(int64),
 		CreatedAt: time.Now().Unix(),
-		Resource:  &locator,
+		Resource:  string(locatorBytes),
 	})
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal event data")

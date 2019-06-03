@@ -11,8 +11,7 @@ require (
 	github.com/rafaeljusto/redigomock v0.0.0-20190202135759-257e089e14a1
 	github.com/spf13/cobra v0.0.4
 	github.com/stretchr/testify v1.3.0
-	github.com/xav/f3/f3nats v0.0.0-20190602142455-12e828924ac8
-	github.com/xav/f3/models v0.0.0-20190602142455-12e828924ac8
-	github.com/xav/f3/service v0.0.0-20190602142455-12e828924ac8
-	gopkg.in/mgo.v2 v2.0.0-20180705113604-9856a29383ce
+	github.com/xav/f3/f3nats v0.0.0-20190603221655-48bffed96c00
+	github.com/xav/f3/models v0.0.0-20190603221655-48bffed96c00
+	github.com/xav/f3/service v0.0.0-20190603221655-48bffed96c00
 )

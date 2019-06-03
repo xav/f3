@@ -17,6 +17,6 @@ package models
 import "github.com/nats-io/nats.go"
 
 type ServiceError struct {
-	Cause   string    `json:"cause" bson:"cause"`
-	Request *nats.Msg `json:"request" bson:"request"`
+	Cause   string    `json:"cause"`
+	Request *nats.Msg `json:"request"`
 }

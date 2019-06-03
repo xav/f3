@@ -28,10 +28,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"github.com/xav/f3/models"
-	"gopkg.in/mgo.v2/bson"
-
 	natsmocks "github.com/xav/f3/f3nats/mocks"
+	"github.com/xav/f3/models"
 
 	"github.com/xav/f3/apiserver/server/mocks"
 )
@@ -43,15 +41,6 @@ func jsonMarshal(t *testing.T, v interface{}) []byte {
 		t.Fatal(err)
 	}
 	return j
-}
-
-func bsonMarshal(t *testing.T, v interface{}) []byte {
-	t.Helper()
-	b, err := bson.Marshal(v)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return b
 }
 
 type RoutesTestFixture struct {
@@ -212,9 +201,9 @@ func TestListPayment_Success(t *testing.T) {
 	f := SetupAPIServerTest(t)
 	req := httptest.NewRequest("GET", "/v1", nil)
 
-	data := bsonMarshal(t, models.Event{
+	data := jsonMarshal(t, models.Event{
 		EventType: models.ResourceFoundEvent,
-		Resource:  []*models.Payment{{}, {}},
+		Resource:  string(jsonMarshal(t, []*models.Payment{{}, {}})),
 	})
 	f.nats.
 		On("Request", string(models.ListPaymentEvent), mock.Anything, mock.Anything).
@@ -233,12 +222,12 @@ func TestListPayment_ServiceError(t *testing.T) {
 	f := SetupAPIServerTest(t)
 	req := httptest.NewRequest("GET", "/v1", nil)
 
-	data := bsonMarshal(t, models.Event{
+	data := jsonMarshal(t, models.Event{
 		EventType: models.ServiceErrorEvent,
-		Resource: models.ServiceError{
+		Resource: string(jsonMarshal(t, models.ServiceError{
 			Cause:   "service error",
 			Request: nil,
-		},
+		})),
 	})
 	f.nats.
 		On("Request", string(models.ListPaymentEvent), mock.Anything, mock.Anything).
@@ -271,12 +260,12 @@ func TestListPayment_UnrecognisedResponse(t *testing.T) {
 	req := httptest.NewRequest("GET", "/v1", nil)
 
 	updateDate := int64(1445444940)
-	data := bsonMarshal(t, models.Event{
+	data := jsonMarshal(t, models.Event{
 		EventType: "waif",
 		Version:   2,
 		CreatedAt: 499137600,
 		UpdatedAt: &updateDate,
-		Resource:  &models.Payment{},
+		Resource:  string(jsonMarshal(t, &models.Payment{})),
 	})
 	f.nats.
 		On("Request", string(models.ListPaymentEvent), mock.Anything, mock.Anything).
@@ -289,7 +278,7 @@ func TestListPayment_UnrecognisedResponse(t *testing.T) {
 
 	f.server.Router.ServeHTTP(f.rr, req)
 	assert.Equal(t, http.StatusInternalServerError, f.rr.Code)
-	assert.Equal(t, "unrecognised response to fetch request: 'waif'\n", f.rr.Body.String())
+	assert.Equal(t, "unrecognised response to list request: 'waif'\n", f.rr.Body.String())
 }
 
 ////////////////////////////////////////
@@ -972,12 +961,12 @@ func TestFetchPayment_Success(t *testing.T) {
 	req := httptest.NewRequest("GET", fmt.Sprintf("/v1/%v/%v", uuid.Nil, uuid.Nil), nil)
 
 	updateDate := int64(1445444940)
-	data := bsonMarshal(t, models.Event{
+	data := jsonMarshal(t, models.Event{
 		EventType: models.ResourceFoundEvent,
 		Version:   2,
 		CreatedAt: 499137600,
 		UpdatedAt: &updateDate,
-		Resource:  &models.Payment{},
+		Resource:  string(jsonMarshal(t, &models.Payment{})),
 	})
 	f.nats.
 		On("Request", string(models.FetchPaymentEvent), mock.Anything, mock.Anything).
@@ -996,12 +985,12 @@ func TestFetchPayment_ServiceError(t *testing.T) {
 	f := SetupAPIServerTest(t)
 	req := httptest.NewRequest("GET", fmt.Sprintf("/v1/%v/%v", uuid.Nil, uuid.Nil), nil)
 
-	data := bsonMarshal(t, models.Event{
+	data := jsonMarshal(t, models.Event{
 		EventType: models.ServiceErrorEvent,
-		Resource: models.ServiceError{
+		Resource: string(jsonMarshal(t, models.ServiceError{
 			Cause:   "service error",
 			Request: nil,
-		},
+		})),
 	})
 	f.nats.
 		On("Request", string(models.FetchPaymentEvent), mock.Anything, mock.Anything).
@@ -1058,12 +1047,12 @@ func TestFetchPayment_NotFound(t *testing.T) {
 	req := httptest.NewRequest("GET", fmt.Sprintf("/v1/%v/%v", uuid.Nil, uuid.Nil), nil)
 
 	updateDate := int64(1445444940)
-	data := bsonMarshal(t, models.Event{
+	data := jsonMarshal(t, models.Event{
 		EventType: models.ResourceNotFoundEvent,
 		Version:   2,
 		CreatedAt: 499137600,
 		UpdatedAt: &updateDate,
-		Resource:  &models.Payment{},
+		Resource:  string(jsonMarshal(t, &models.Payment{})),
 	})
 	f.nats.
 		On("Request", string(models.FetchPaymentEvent), mock.Anything, mock.Anything).
@@ -1083,12 +1072,12 @@ func TestFetchPayment_UnrecognisedResponse(t *testing.T) {
 	req := httptest.NewRequest("GET", fmt.Sprintf("/v1/%v/%v", uuid.Nil, uuid.Nil), nil)
 
 	updateDate := int64(1445444940)
-	data := bsonMarshal(t, models.Event{
+	data := jsonMarshal(t, models.Event{
 		EventType: "a man has no name",
 		Version:   2,
 		CreatedAt: 499137600,
 		UpdatedAt: &updateDate,
-		Resource:  &models.Payment{},
+		Resource:  string(jsonMarshal(t, &models.Payment{})),
 	})
 	f.nats.
 		On("Request", string(models.FetchPaymentEvent), mock.Anything, mock.Anything).
@@ -1126,12 +1115,12 @@ func TestDeletePayment_Success(t *testing.T) {
 	req := httptest.NewRequest("DELETE", fmt.Sprintf("/v1/%v/%v", locator.OrganisationID, locator.ID), nil)
 
 	updateDate := int64(1445444940)
-	data := bsonMarshal(t, models.Event{
+	data := jsonMarshal(t, models.Event{
 		EventType: models.ResourceFoundEvent,
 		Version:   2,
 		CreatedAt: 499137600,
 		UpdatedAt: &updateDate,
-		Resource:  &locator,
+		Resource:  string(jsonMarshal(t, locator)),
 	})
 	f.nats.
 		On("Request", string(models.DeletePaymentEvent), mock.Anything, mock.Anything).
@@ -1150,12 +1139,12 @@ func TestDeletePayment_ServiceError(t *testing.T) {
 	f := SetupAPIServerTest(t)
 	req := httptest.NewRequest("DELETE", fmt.Sprintf("/v1/%v/%v", uuid.Nil, uuid.Nil), nil)
 
-	data := bsonMarshal(t, models.Event{
+	data := jsonMarshal(t, models.Event{
 		EventType: models.ServiceErrorEvent,
-		Resource: models.ServiceError{
+		Resource: string(jsonMarshal(t, models.ServiceError{
 			Cause:   "service error",
 			Request: nil,
-		},
+		})),
 	})
 	f.nats.
 		On("Request", string(models.DeletePaymentEvent), mock.Anything, mock.Anything).
@@ -1216,12 +1205,12 @@ func TestDeletePayment_NotFound(t *testing.T) {
 	req := httptest.NewRequest("DELETE", fmt.Sprintf("/v1/%v/%v", locator.OrganisationID, locator.ID), nil)
 
 	updateDate := int64(1445444940)
-	data := bsonMarshal(t, models.Event{
+	data := jsonMarshal(t, models.Event{
 		EventType: models.ResourceNotFoundEvent,
 		Version:   2,
 		CreatedAt: 499137600,
 		UpdatedAt: &updateDate,
-		Resource:  &locator,
+		Resource:  string(jsonMarshal(t, locator)),
 	})
 	f.nats.
 		On("Request", string(models.DeletePaymentEvent), mock.Anything, mock.Anything).
@@ -1245,12 +1234,12 @@ func TestDeletePayment_UnrecognisedResponse(t *testing.T) {
 	req := httptest.NewRequest("DELETE", fmt.Sprintf("/v1/%v/%v", locator.OrganisationID, locator.ID), nil)
 
 	updateDate := int64(1445444940)
-	data := bsonMarshal(t, models.Event{
+	data := jsonMarshal(t, models.Event{
 		EventType: "jaqen h'ghar",
 		Version:   2,
 		CreatedAt: 499137600,
 		UpdatedAt: &updateDate,
-		Resource:  &locator,
+		Resource:  string(jsonMarshal(t, locator)),
 	})
 	f.nats.
 		On("Request", string(models.DeletePaymentEvent), mock.Anything, mock.Anything).

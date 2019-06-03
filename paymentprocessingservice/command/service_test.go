@@ -29,7 +29,6 @@ import (
 	"github.com/xav/f3/f3nats/mocks"
 	"github.com/xav/f3/models"
 	"github.com/xav/f3/service"
-	"gopkg.in/mgo.v2/bson"
 )
 
 func jsonMarshal(t *testing.T, v interface{}) []byte {
@@ -39,15 +38,6 @@ func jsonMarshal(t *testing.T, v interface{}) []byte {
 		t.Fatal(err)
 	}
 	return j
-}
-
-func bsonMarshal(t *testing.T, v interface{}) []byte {
-	t.Helper()
-	b, err := bson.Marshal(v)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return b
 }
 
 type PaymentServiceTestFixture struct {
@@ -91,7 +81,7 @@ func NewTestStart(t *testing.T, s ...*Start) *Start {
 ////////////////////////////////////////
 
 func TestCreatePayment(t *testing.T) {
-	t.Run("create payment with invalid bson payload", TestCreatePayment_InvalidPayload)
+	t.Run("create payment with invalid payload", TestCreatePayment_InvalidPayload)
 	t.Run("create payment where the redis scan fails", TestCreatePayment_ScanError)
 	t.Run("create payment where the locator is already present in redis", TestCreatePayment_AlreadyPresent)
 	t.Run("create payment where version handler fails", TestCreatePayment_VersionError)
@@ -107,11 +97,11 @@ func TestCreatePayment_InvalidPayload(t *testing.T) {
 	err := s.HandleCreatePayment(f.service, &nats.Msg{
 		Subject: string(models.CreatePaymentEvent),
 		Reply:   "",
-		Data:    []byte(("not_bson")),
+		Data:    []byte(("//")),
 		Sub:     nil,
 	})
 
-	require.EqualError(t, errors.Cause(err), "Document is corrupted")
+	require.EqualError(t, errors.Cause(err), "invalid character '/' looking for beginning of value")
 }
 
 func TestCreatePayment_ScanError(t *testing.T) {
@@ -125,7 +115,7 @@ func TestCreatePayment_ScanError(t *testing.T) {
 	err := s.HandleCreatePayment(f.service, &nats.Msg{
 		Subject: string(models.CreatePaymentEvent),
 		Reply:   "",
-		Data:    bsonMarshal(t, models.Payment{}),
+		Data:    jsonMarshal(t, models.Payment{}),
 		Sub:     nil,
 	})
 
@@ -143,7 +133,7 @@ func TestCreatePayment_AlreadyPresent(t *testing.T) {
 	err := s.HandleCreatePayment(f.service, &nats.Msg{
 		Subject: string(models.CreatePaymentEvent),
 		Reply:   "",
-		Data:    bsonMarshal(t, models.Payment{}),
+		Data:    jsonMarshal(t, models.Payment{}),
 		Sub:     nil,
 	})
 
@@ -160,7 +150,7 @@ func TestCreatePayment_VersionError(t *testing.T) {
 	err := s.HandleCreatePayment(f.service, &nats.Msg{
 		Subject: string(models.CreatePaymentEvent),
 		Reply:   "",
-		Data:    bsonMarshal(t, models.Payment{}),
+		Data:    jsonMarshal(t, models.Payment{}),
 		Sub:     nil,
 	})
 
@@ -180,7 +170,7 @@ func TestCreatePayment_SetError(t *testing.T) {
 	err := s.HandleCreatePayment(f.service, &nats.Msg{
 		Subject: string(models.CreatePaymentEvent),
 		Reply:   "",
-		Data:    bsonMarshal(t, models.Payment{}),
+		Data:    jsonMarshal(t, models.Payment{}),
 		Sub:     nil,
 	})
 
@@ -200,7 +190,7 @@ func TestCreatePayment_NoReply(t *testing.T) {
 	err := s.HandleCreatePayment(f.service, &nats.Msg{
 		Subject: string(models.CreatePaymentEvent),
 		Reply:   "",
-		Data:    bsonMarshal(t, models.Payment{}),
+		Data:    jsonMarshal(t, models.Payment{}),
 		Sub:     nil,
 	})
 
@@ -223,7 +213,7 @@ func TestCreatePayment_Reply(t *testing.T) {
 	err := s.HandleCreatePayment(f.service, &nats.Msg{
 		Subject: string(models.CreatePaymentEvent),
 		Reply:   "reply-inbox",
-		Data:    bsonMarshal(t, models.Payment{}),
+		Data:    jsonMarshal(t, models.Payment{}),
 		Sub:     nil,
 	})
 
@@ -233,7 +223,7 @@ func TestCreatePayment_Reply(t *testing.T) {
 ////////////////////////////////////////
 
 func TestUpdatePayment(t *testing.T) {
-	t.Run("update payment with invalid bson payload", TestUpdatePayment_InvalidPayload)
+	t.Run("update payment with invalid payload", TestUpdatePayment_InvalidPayload)
 	t.Run("update payment where the redis scan fails", TestUpdatePayment_ScanError)
 	t.Run("update payment where the locator is not present in redis", TestUpdatePayment_NotPresent)
 	t.Run("update payment where version handler fails", TestUpdatePayment_VersionError)
@@ -249,11 +239,11 @@ func TestUpdatePayment_InvalidPayload(t *testing.T) {
 	err := s.HandleUpdatePayment(f.service, &nats.Msg{
 		Subject: string(models.UpdatePaymentEvent),
 		Reply:   "",
-		Data:    []byte(("not_bson")),
+		Data:    []byte(("//")),
 		Sub:     nil,
 	})
 
-	require.EqualError(t, errors.Cause(err), "Document is corrupted")
+	require.EqualError(t, errors.Cause(err), "invalid character '/' looking for beginning of value")
 }
 
 func TestUpdatePayment_ScanError(t *testing.T) {
@@ -267,7 +257,7 @@ func TestUpdatePayment_ScanError(t *testing.T) {
 	err := s.HandleUpdatePayment(f.service, &nats.Msg{
 		Subject: string(models.UpdatePaymentEvent),
 		Reply:   "",
-		Data:    bsonMarshal(t, models.Payment{}),
+		Data:    jsonMarshal(t, models.Payment{}),
 		Sub:     nil,
 	})
 
@@ -281,7 +271,7 @@ func TestUpdatePayment_NotPresent(t *testing.T) {
 	err := s.HandleUpdatePayment(f.service, &nats.Msg{
 		Subject: string(models.UpdatePaymentEvent),
 		Reply:   "",
-		Data:    bsonMarshal(t, models.Payment{}),
+		Data:    jsonMarshal(t, models.Payment{}),
 		Sub:     nil,
 	})
 
@@ -302,7 +292,7 @@ func TestUpdatePayment_VersionError(t *testing.T) {
 	err := s.HandleUpdatePayment(f.service, &nats.Msg{
 		Subject: string(models.UpdatePaymentEvent),
 		Reply:   "",
-		Data:    bsonMarshal(t, models.Payment{}),
+		Data:    jsonMarshal(t, models.Payment{}),
 		Sub:     nil,
 	})
 
@@ -326,7 +316,7 @@ func TestUpdatePayment_SetError(t *testing.T) {
 	err := s.HandleUpdatePayment(f.service, &nats.Msg{
 		Subject: string(models.UpdatePaymentEvent),
 		Reply:   "",
-		Data:    bsonMarshal(t, models.Payment{}),
+		Data:    jsonMarshal(t, models.Payment{}),
 		Sub:     nil,
 	})
 
@@ -350,7 +340,7 @@ func TestUpdatePayment_NoReply(t *testing.T) {
 	err := s.HandleUpdatePayment(f.service, &nats.Msg{
 		Subject: string(models.UpdatePaymentEvent),
 		Reply:   "",
-		Data:    bsonMarshal(t, models.Payment{}),
+		Data:    jsonMarshal(t, models.Payment{}),
 		Sub:     nil,
 	})
 
@@ -377,7 +367,7 @@ func TestUpdatePayment_Reply(t *testing.T) {
 	err := s.HandleUpdatePayment(f.service, &nats.Msg{
 		Subject: string(models.UpdatePaymentEvent),
 		Reply:   "reply-inbox",
-		Data:    bsonMarshal(t, models.Payment{}),
+		Data:    jsonMarshal(t, models.Payment{}),
 		Sub:     nil,
 	})
 
@@ -387,7 +377,7 @@ func TestUpdatePayment_Reply(t *testing.T) {
 ////////////////////////////////////////
 
 func TestDeletePayment(t *testing.T) {
-	t.Run("delete payment with invalid bson payload", TestDeletePayment_InvalidPayload)
+	t.Run("delete payment with invalid payload", TestDeletePayment_InvalidPayload)
 	t.Run("delete payment where the redis scan fails", TestDeletePayment_ScanError)
 	t.Run("delete payment where the locator is not present in redis", TestDeletePayment_NotPresent)
 	t.Run("delete payment where version handler fails", TestDeletePayment_VersionError)
@@ -403,11 +393,11 @@ func TestDeletePayment_InvalidPayload(t *testing.T) {
 	err := s.HandleDeletePayment(f.service, &nats.Msg{
 		Subject: string(models.DeletePaymentEvent),
 		Reply:   "",
-		Data:    []byte(("not_bson")),
+		Data:    []byte(("//")),
 		Sub:     nil,
 	})
 
-	require.EqualError(t, errors.Cause(err), "Document is corrupted")
+	require.EqualError(t, errors.Cause(err), "invalid character '/' looking for beginning of value")
 }
 
 func TestDeletePayment_ScanError(t *testing.T) {
@@ -421,7 +411,7 @@ func TestDeletePayment_ScanError(t *testing.T) {
 	err := s.HandleDeletePayment(f.service, &nats.Msg{
 		Subject: string(models.DeletePaymentEvent),
 		Reply:   "",
-		Data:    bsonMarshal(t, models.ResourceLocator{}),
+		Data:    jsonMarshal(t, models.ResourceLocator{}),
 		Sub:     nil,
 	})
 
@@ -435,7 +425,7 @@ func TestDeletePayment_NotPresent(t *testing.T) {
 	err := s.HandleDeletePayment(f.service, &nats.Msg{
 		Subject: string(models.DeletePaymentEvent),
 		Reply:   "",
-		Data:    bsonMarshal(t, models.ResourceLocator{}),
+		Data:    jsonMarshal(t, models.ResourceLocator{}),
 		Sub:     nil,
 	})
 
@@ -456,7 +446,7 @@ func TestDeletePayment_VersionError(t *testing.T) {
 	err := s.HandleDeletePayment(f.service, &nats.Msg{
 		Subject: string(models.DeletePaymentEvent),
 		Reply:   "",
-		Data:    bsonMarshal(t, models.ResourceLocator{}),
+		Data:    jsonMarshal(t, models.ResourceLocator{}),
 		Sub:     nil,
 	})
 
@@ -480,7 +470,7 @@ func TestDeletePayment_SetError(t *testing.T) {
 	err := s.HandleDeletePayment(f.service, &nats.Msg{
 		Subject: string(models.DeletePaymentEvent),
 		Reply:   "",
-		Data:    bsonMarshal(t, models.ResourceLocator{}),
+		Data:    jsonMarshal(t, models.ResourceLocator{}),
 		Sub:     nil,
 	})
 
@@ -504,7 +494,7 @@ func TestDeletePayment_NoReply(t *testing.T) {
 	err := s.HandleDeletePayment(f.service, &nats.Msg{
 		Subject: string(models.DeletePaymentEvent),
 		Reply:   "",
-		Data:    bsonMarshal(t, models.ResourceLocator{}),
+		Data:    jsonMarshal(t, models.ResourceLocator{}),
 		Sub:     nil,
 	})
 
@@ -531,7 +521,7 @@ func TestDeletePayment_Reply(t *testing.T) {
 	err := s.HandleDeletePayment(f.service, &nats.Msg{
 		Subject: string(models.DeletePaymentEvent),
 		Reply:   "reply-inbox",
-		Data:    bsonMarshal(t, models.ResourceLocator{}),
+		Data:    jsonMarshal(t, models.ResourceLocator{}),
 		Sub:     nil,
 	})
 

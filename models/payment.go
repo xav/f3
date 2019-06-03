@@ -21,11 +21,11 @@ import (
 )
 
 type Payment struct {
-	Type           ResourceType       `json:"type"            bson:"type"`
-	OrganisationID uuid.UUID          `json:"organisation_id" bson:"organisation_id"`
-	ID             uuid.UUID          `json:"id"              bson:"id"`
-	Version        int                `json:"version"         bson:"version"`
-	Attributes     *PaymentAttributes `json:"attributes"      bson:"attributes"`
+	Type           ResourceType       `json:"type"`
+	OrganisationID uuid.UUID          `json:"organisation_id"`
+	ID             uuid.UUID          `json:"id"`
+	Version        int                `json:"version"`
+	Attributes     *PaymentAttributes `json:"attributes"`
 }
 
 func (p *Payment) Validate() error {
@@ -46,50 +46,50 @@ type Currency string
 type AccountType int
 
 type PaymentAttributes struct {
-	PaymentID            string               `json:"payment_id"               bson:"payment_id"`
-	Amount               float32              `json:"amount,string"            bson:"amount"`
-	Currency             Currency             `json:"currency"                 bson:"currency"`
-	Purpose              string               `json:"payment_purpose"          bson:"payment_purpose"`
-	Scheme               string               `json:"payment_scheme"           bson:"payment_scheme"`
-	Type                 PaymentType          `json:"payment_type"             bson:"payment_type"`
-	ProcessingDate       civil.Date           `json:"processing_date"          bson:"processing_date"`
-	NumericReference     uint64               `json:"numeric_reference,string" bson:"numeric_reference"`
-	Reference            string               `json:"reference"                bson:"reference"`
-	EndToEndReference    string               `json:"end_to_end_reference"     bson:"end_to_end_reference"`
-	ChargesInformation   ChargesInformation   `json:"charges_information"      bson:"charges_information"`
-	Exchange             Exchange             `json:"fx"                       bson:"fx"`
-	SchemePaymentSubType SchemePaymentSubType `json:"scheme_payment_sub_type"  bson:"scheme_payment_sub_type"`
-	SchemePaymentType    SchemePaymentType    `json:"scheme_payment_type"      bson:"scheme_payment_type"`
-	BeneficiaryParty     Party                `json:"beneficiary_party"        bson:"beneficiary_party"`
-	DebtorParty          Party                `json:"debtor_party"             bson:"debtor_party"`
-	SponsorParty         Party                `json:"sponsor_party"            bson:"sponsor_party"`
+	PaymentID            string               `json:"payment_id"`
+	Amount               float32              `json:"amount,string"`
+	Currency             Currency             `json:"currency"`
+	Purpose              string               `json:"payment_purpose"`
+	Scheme               string               `json:"payment_scheme"`
+	Type                 PaymentType          `json:"payment_type"`
+	ProcessingDate       civil.Date           `json:"processing_date"`
+	NumericReference     uint64               `json:"numeric_reference,string"`
+	Reference            string               `json:"reference"`
+	EndToEndReference    string               `json:"end_to_end_reference"`
+	ChargesInformation   ChargesInformation   `json:"charges_information"`
+	Exchange             Exchange             `json:"fx"`
+	SchemePaymentSubType SchemePaymentSubType `json:"scheme_payment_sub_type"`
+	SchemePaymentType    SchemePaymentType    `json:"scheme_payment_type"`
+	BeneficiaryParty     Party                `json:"beneficiary_party"`
+	DebtorParty          Party                `json:"debtor_party"`
+	SponsorParty         Party                `json:"sponsor_party"`
 }
 
 type ChargesInformation struct {
-	BearerCode              string    `json:"bearer_code"                    bson:"bearer_code"`
-	SenderCharges           []Charges `json:"sender_charges"                 bson:"sender_charges"`
-	ReceiverChargesAmount   float64   `json:"receiver_charges_amount,string" bson:"receiver_charges_amount"`
-	ReceiverChargesCurrency Currency  `json:"receiver_charges_currency"      bson:"receiver_charges_currency"`
+	BearerCode              string    `json:"bearer_code"`
+	SenderCharges           []Charges `json:"sender_charges"`
+	ReceiverChargesAmount   float64   `json:"receiver_charges_amount,string"`
+	ReceiverChargesCurrency Currency  `json:"receiver_charges_currency"`
 }
 type Charges struct {
-	Amount   float32  `json:"amount,string" bson:"amount"`
-	Currency Currency `json:"currency"      bson:"currency"`
+	Amount   float32  `json:"amount,string"`
+	Currency Currency `json:"currency"`
 }
 
 type Party struct {
-	AccountNumber     string      `json:"account_number"                bson:"account_number"`
-	BankId            string      `json:"bank_id"                       bson:"bank_id"`
-	BankIdCode        string      `json:"bank_id_code"                  bson:"bank_id_code"`
-	Name              string      `json:"name,omitempty"                bson:"name,omitempty"`
-	Address           string      `json:"address,omitempty"             bson:"address,omitempty"`
-	AccountName       string      `json:"account_name,omitempty"        bson:"account_name,omitempty"`
-	AccountNumberCode string      `json:"account_number_code,omitempty" bson:"account_number_code,omitempty"`
-	AccountType       AccountType `json:"account_type,omitempty"        bson:"account_type,omitempty"`
+	AccountNumber     string      `json:"account_number"`
+	BankId            string      `json:"bank_id"`
+	BankIdCode        string      `json:"bank_id_code"`
+	Name              string      `json:"name,omitempty"`
+	Address           string      `json:"address,omitempty"`
+	AccountName       string      `json:"account_name,omitempty"`
+	AccountNumberCode string      `json:"account_number_code,omitempty"`
+	AccountType       AccountType `json:"account_type,omitempty"`
 }
 
 type Exchange struct {
-	ContractReference string  `json:"contract_reference"     bson:"contract_reference"`
-	ExchangeRate      float64 `json:"exchange_rate,string"   bson:"exchange_rate"`
-	OriginalAmount    float64 `json:"original_amount,string" bson:"original_amount"`
-	OriginalCurrency  string  `json:"original_currency"      bson:"original_currency"`
+	ContractReference string  `json:"contract_reference"`
+	ExchangeRate      float64 `json:"exchange_rate,string"`
+	OriginalAmount    float64 `json:"original_amount,string"`
+	OriginalCurrency  string  `json:"original_currency"`
 }

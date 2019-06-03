@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/apex/log"
+	"github.com/buger/jsonparser"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/go-chi/render"
@@ -33,7 +34,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/xav/f3/f3nats"
 	"github.com/xav/f3/models"
-	"gopkg.in/mgo.v2/bson"
 )
 
 type Server struct {
@@ -42,6 +42,7 @@ type Server struct {
 	Nats          f3nats.NatsConn
 	routesHandler RoutesHandler
 	ctx           context.Context
+	natsTimeout   time.Duration
 }
 
 const (
@@ -60,7 +61,8 @@ func NewServer(options ...func(s *Server) error) (*Server, error) {
 	)
 
 	s := &Server{
-		Router: r,
+		Router:      r,
+		natsTimeout: 100 * time.Millisecond,
 	}
 	s.routesHandler = s
 
@@ -159,41 +161,43 @@ func (s *Server) ListVersions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) ListPayments(w http.ResponseWriter, r *http.Request) {
-	data, err := bson.Marshal(models.ResourceLocator{
+	data, err := json.Marshal(models.ResourceLocator{
 		OrganisationID: nil,
 		ID:             nil,
 	})
 	if err != nil {
-		log.WithError(err).Error("failed to marshal payment resource locator")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		logError(w, err, "failed to encode payment resource locator")
 		return
 	}
 
-	reply, err := s.Nats.Request(string(models.ListPaymentEvent), data, 10*time.Millisecond)
+	reply, err := s.Nats.Request(string(models.ListPaymentEvent), data, s.natsTimeout)
 	if err != nil {
-		log.WithError(err).Error("list request event failed")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		logError(w, err, "list request event failed")
 		return
 	}
 
-	replyEvent := models.PaymentListEvent{}
-	if err := bson.Unmarshal(reply.Data, &replyEvent); err != nil {
-		log.WithError(err).Error("failed to decode reply data")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	replyEvent := models.Event{}
+	if err := json.Unmarshal(reply.Data, &replyEvent); err != nil {
+		logError(w, err, "failed to decode reply data")
 		return
 	}
 
 	switch replyEvent.EventType {
 	case models.ResourceFoundEvent:
-		render.DefaultResponder(w, r, replyEvent.Resource)
+		payments := make([]models.Payment, 0)
+		if err := json.Unmarshal([]byte(replyEvent.Resource), &payments); err != nil {
+			logError(w, err, "failed to decode payments data")
+			return
+		}
+		render.DefaultResponder(w, r, payments)
 	case models.ServiceErrorEvent:
-		replyEvent := models.Event{}
-		_ = bson.Unmarshal(reply.Data, &replyEvent)
-		cause := replyEvent.Resource.(bson.M)["cause"].(string)
-		http.Error(w, fmt.Sprintf(cause), http.StatusInternalServerError)
+		if cause, err := jsonparser.GetString([]byte(replyEvent.Resource), "cause"); err != nil {
+			http.Error(w, "unknown error", http.StatusInternalServerError)
+		} else {
+			http.Error(w, cause, http.StatusInternalServerError)
+		}
 	default:
-		log.Errorf("unrecognised response to list request: '%v'", replyEvent.EventType)
-		http.Error(w, fmt.Sprintf("unrecognised response to list request: '%v'", replyEvent.EventType), http.StatusInternalServerError)
+		logErrorf(w, nil, "unrecognised response to list request: '%v'", replyEvent.EventType)
 	}
 }
 
@@ -210,7 +214,7 @@ func (s *Server) CreatePayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := bson.Marshal(payment)
+	data, err := json.Marshal(payment)
 	if err != nil {
 		log.WithError(err).Error("failed to marshal payment data")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -223,7 +227,7 @@ func (s *Server) CreatePayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	render.Status(r, http.StatusAccepted)
-	render.DefaultResponder(w, r, "CreatePayment")
+	render.DefaultResponder(w, r, "Accepted")
 }
 
 func (s *Server) FetchPayment(w http.ResponseWriter, r *http.Request) {
@@ -240,44 +244,46 @@ func (s *Server) FetchPayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := bson.Marshal(models.ResourceLocator{
+	data, err := json.Marshal(models.ResourceLocator{
 		OrganisationID: &oid,
 		ID:             &pid,
 	})
 	if err != nil {
-		log.WithError(err).Error("failed to marshal payment resource locator")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		logError(w, err, "failed to encode payment resource locator")
 		return
 	}
 
-	msg, err := s.Nats.Request(string(models.FetchPaymentEvent), data, 10*time.Millisecond)
+	msg, err := s.Nats.Request(string(models.FetchPaymentEvent), data, s.natsTimeout)
 	if err != nil {
-		log.WithError(err).Error("fetch request event failed")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		logError(w, err, "fetch request event failed")
 		return
 	}
 
-	replyEvent := models.PaymentEvent{}
-	if err := bson.Unmarshal(msg.Data, &replyEvent); err != nil {
-		log.WithError(err).Error("failed to decode reply data")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	replyEvent := models.Event{}
+	if err := json.Unmarshal(msg.Data, &replyEvent); err != nil {
+		logError(w, err, "failed to decode reply data")
 		return
 	}
 
 	switch replyEvent.EventType {
 	case models.ResourceFoundEvent:
-		render.DefaultResponder(w, r, replyEvent.Resource)
+		payment := models.Payment{}
+		if err := json.Unmarshal([]byte(replyEvent.Resource), &payment); err != nil {
+			logError(w, err, "failed to decode payment data")
+			return
+		}
+		render.DefaultResponder(w, r, payment)
 	case models.ResourceNotFoundEvent:
 		log.Warnf("payment '%v/%v' was not found", oid.String(), pid.String())
 		http.Error(w, fmt.Sprintf("payment '%v/%v' was not found", oid.String(), pid.String()), http.StatusNotFound)
 	case models.ServiceErrorEvent:
-		replyEvent := models.Event{}
-		_ = bson.Unmarshal(msg.Data, &replyEvent)
-		cause := replyEvent.Resource.(bson.M)["cause"].(string)
-		http.Error(w, fmt.Sprintf(cause), http.StatusInternalServerError)
+		if cause, err := jsonparser.GetString([]byte(replyEvent.Resource), "cause"); err != nil {
+			http.Error(w, "unknown error", http.StatusInternalServerError)
+		} else {
+			http.Error(w, cause, http.StatusInternalServerError)
+		}
 	default:
-		log.Errorf("unrecognised response to fetch request: '%v'", replyEvent.EventType)
-		http.Error(w, fmt.Sprintf("unrecognised response to fetch request: '%v'", replyEvent.EventType), http.StatusInternalServerError)
+		logErrorf(w, nil, "unrecognised response to fetch request: '%v'", replyEvent.EventType)
 	}
 }
 
@@ -295,7 +301,7 @@ func (s *Server) UpdatePayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := bson.Marshal(payment)
+	data, err := json.Marshal(payment)
 	if err != nil {
 		log.WithError(err).Error("failed to marshal payment data")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -308,7 +314,7 @@ func (s *Server) UpdatePayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	render.Status(r, http.StatusAccepted)
-	render.DefaultResponder(w, r, "CreatePayment")
+	render.DefaultResponder(w, r, "Accepted")
 }
 
 func (s *Server) DeletePayment(w http.ResponseWriter, r *http.Request) {
@@ -325,7 +331,7 @@ func (s *Server) DeletePayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := bson.Marshal(models.ResourceLocator{
+	data, err := json.Marshal(models.ResourceLocator{
 		OrganisationID: &oid,
 		ID:             &pid,
 	})
@@ -335,35 +341,39 @@ func (s *Server) DeletePayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msg, err := s.Nats.Request(string(models.DeletePaymentEvent), data, 10*time.Millisecond)
+	msg, err := s.Nats.Request(string(models.DeletePaymentEvent), data, s.natsTimeout)
 	if err != nil {
 		log.WithError(err).Error("fetch request event failed")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	replyEvent := models.LocatorEvent{}
-	if err := bson.Unmarshal(msg.Data, &replyEvent); err != nil {
-		log.WithError(err).Error("failed to decode reply data")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	replyEvent := models.Event{}
+	if err := json.Unmarshal(msg.Data, &replyEvent); err != nil {
+		logError(w, err, "failed to decode reply data")
 		return
 	}
 
 	switch replyEvent.EventType {
 	case models.ResourceFoundEvent:
+		locator := models.ResourceLocator{}
+		if err := json.Unmarshal([]byte(replyEvent.Resource), &locator); err != nil {
+			logError(w, err, "failed to decode locator data")
+			return
+		}
 		render.Status(r, http.StatusGone)
-		render.DefaultResponder(w, r, replyEvent.Resource)
+		render.DefaultResponder(w, r, locator)
 	case models.ResourceNotFoundEvent:
 		log.Warnf("resource '%v/%v' was not found", oid.String(), pid.String())
 		http.Error(w, fmt.Sprintf("resource '%v/%v' was not found", oid.String(), pid.String()), http.StatusNotFound)
 	case models.ServiceErrorEvent:
-		replyEvent := models.Event{}
-		_ = bson.Unmarshal(msg.Data, &replyEvent)
-		cause := replyEvent.Resource.(bson.M)["cause"].(string)
-		http.Error(w, fmt.Sprintf(cause), http.StatusInternalServerError)
+		if cause, err := jsonparser.GetString([]byte(replyEvent.Resource), "cause"); err != nil {
+			http.Error(w, "unknown error", http.StatusInternalServerError)
+		} else {
+			http.Error(w, cause, http.StatusInternalServerError)
+		}
 	default:
-		log.Errorf("unrecognised response to fetch request: '%v'", replyEvent.EventType)
-		http.Error(w, fmt.Sprintf("unrecognised response to fetch request: '%v'", replyEvent.EventType), http.StatusInternalServerError)
+		logErrorf(w, nil, "unrecognised response to fetch request: '%v'", replyEvent.EventType)
 	}
 }
 
@@ -381,7 +391,7 @@ func (s *Server) DumpPayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := bson.Marshal(models.ResourceLocator{
+	data, err := json.Marshal(models.ResourceLocator{
 		OrganisationID: &oid,
 		ID:             &pid,
 	})
@@ -397,5 +407,23 @@ func (s *Server) DumpPayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	render.Status(r, http.StatusAccepted)
-	render.DefaultResponder(w, r, "DumpPayment")
+	render.DefaultResponder(w, r, "Accepted")
+}
+
+func logError(w http.ResponseWriter, err error, msg string) {
+	if err != nil {
+		log.WithError(err).Error(msg)
+	} else {
+		log.Error(msg)
+	}
+	http.Error(w, msg, http.StatusInternalServerError)
+}
+
+func logErrorf(w http.ResponseWriter, err error, msg string, v ...interface{}) {
+	if err != nil {
+		log.WithError(err).Errorf(msg, v...)
+	} else {
+		log.Errorf(msg, v...)
+	}
+	http.Error(w, fmt.Sprintf(msg, v...), http.StatusInternalServerError)
 }
