@@ -133,8 +133,9 @@ func (s *Server) routes(r *chi.Mux) error {
 		r.Put("/", s.routesHandler.UpdatePayment)  // PUT  /
 
 		r.Route("/{"+organisationURLParam+"}/{"+paymentURLParam+"}", func(r chi.Router) {
-			r.Get("/", s.routesHandler.FetchPayment)     // GET    /{payment}
-			r.Delete("/", s.routesHandler.DeletePayment) // DELETE /{payment}
+			r.Get("/", s.routesHandler.FetchPayment)     // GET    /{organisationID}/{paymentID}
+			r.Delete("/", s.routesHandler.DeletePayment) // DELETE /{organisationID}/{paymentID}
+			r.Post("/dump", s.routesHandler.DumpPayment) // POST   /{organisationID}/{paymentID}/dump
 		})
 	})
 
@@ -150,6 +151,7 @@ type RoutesHandler interface {
 	FetchPayment(w http.ResponseWriter, r *http.Request)
 	UpdatePayment(w http.ResponseWriter, r *http.Request)
 	DeletePayment(w http.ResponseWriter, r *http.Request)
+	DumpPayment(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) ListVersions(w http.ResponseWriter, r *http.Request) {
@@ -363,4 +365,37 @@ func (s *Server) DeletePayment(w http.ResponseWriter, r *http.Request) {
 		log.Errorf("unrecognised response to fetch request: '%v'", replyEvent.EventType)
 		http.Error(w, fmt.Sprintf("unrecognised response to fetch request: '%v'", replyEvent.EventType), http.StatusInternalServerError)
 	}
+}
+
+func (s *Server) DumpPayment(w http.ResponseWriter, r *http.Request) {
+	oid, err := uuid.Parse(chi.URLParam(r, organisationURLParam))
+	if err != nil {
+		log.WithError(err).Warnf("invalid organisation id: '%v'", chi.URLParam(r, organisationURLParam))
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	pid, err := uuid.Parse(chi.URLParam(r, paymentURLParam))
+	if err != nil {
+		log.WithError(err).Warnf("invalid resource id: '%v'", chi.URLParam(r, organisationURLParam))
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	data, err := bson.Marshal(models.ResourceLocator{
+		OrganisationID: &oid,
+		ID:             &pid,
+	})
+	if err != nil {
+		log.WithError(err).Error("failed to marshal payment resource locator")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := s.Nats.Publish(string(models.DumpPaymentEvent), data); err != nil {
+		log.WithError(err).Error("Failed to publish dump event")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	render.Status(r, http.StatusAccepted)
+	render.DefaultResponder(w, r, "DumpPayment")
 }

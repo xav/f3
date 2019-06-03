@@ -20,6 +20,11 @@ func (_m *RoutesHandler) DeletePayment(w http.ResponseWriter, r *http.Request) {
 	_m.Called(w, r)
 }
 
+// DumpPayment provides a mock function with given fields: w, r
+func (_m *RoutesHandler) DumpPayment(w http.ResponseWriter, r *http.Request) {
+	_m.Called(w, r)
+}
+
 // FetchPayment provides a mock function with given fields: w, r
 func (_m *RoutesHandler) FetchPayment(w http.ResponseWriter, r *http.Request) {
 	_m.Called(w, r)

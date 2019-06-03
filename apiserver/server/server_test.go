@@ -79,6 +79,7 @@ func SetupRoutesTest(t *testing.T) *RoutesTestFixture {
 	registerCall("FetchPayment")
 	registerCall("UpdatePayment")
 	registerCall("DeletePayment")
+	registerCall("DumpPayment")
 
 	nc := &natsmocks.NatsConn{}
 	s, err := NewServer(func(s *Server) error {
@@ -105,6 +106,7 @@ func TestRoutes(t *testing.T) {
 	t.Run("check that 'PUT /v1' is routed to 'UpdatePayment'", TestRoutes_UpdatePayment)
 	t.Run("check that 'GET /v1/{orgId}/{paymentId}' is routed to 'FetchPayment'", TestRoutes_FetchPayment)
 	t.Run("check that 'DELETE /v1/{orgId}/{paymentId}' is routed to 'DeletePayment'", TestRoutes_DeletePayment)
+	t.Run("check that 'POST /v1/{orgId}/{paymentId}/dump' is routed to 'DumpPayment'", TestRoutes_DumpPayment)
 }
 
 func TestRoutes_ListVersions(t *testing.T) {
@@ -156,10 +158,18 @@ func TestRoutes_FetchPayment(t *testing.T) {
 
 func TestRoutes_DeletePayment(t *testing.T) {
 	f := SetupRoutesTest(t)
-	request := httptest.NewRequest("DELETE", "/v1/orgId/paymentId", nil)
+	request := httptest.NewRequest("DELETE", "/v1/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000", nil)
 	f.server.Router.ServeHTTP(f.rr, request)
 	assert.Equal(t, http.StatusOK, f.rr.Code)
 	assert.Equal(t, "DeletePayment", f.rr.Body.String())
+}
+
+func TestRoutes_DumpPayment(t *testing.T) {
+	f := SetupRoutesTest(t)
+	request := httptest.NewRequest("POST", "/v1/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000000/dump", nil)
+	f.server.Router.ServeHTTP(f.rr, request)
+	assert.Equal(t, http.StatusOK, f.rr.Code)
+	assert.Equal(t, "DumpPayment", f.rr.Body.String())
 }
 
 ////////////////////////////////////////
@@ -1254,4 +1264,71 @@ func TestDeletePayment_UnrecognisedResponse(t *testing.T) {
 	f.server.Router.ServeHTTP(f.rr, req)
 	assert.Equal(t, http.StatusInternalServerError, f.rr.Code)
 	assert.Equal(t, "unrecognised response to fetch request: 'jaqen h'ghar'\n", f.rr.Body.String())
+}
+
+////////////////////////////////////////
+
+func TestDumpPayment(t *testing.T) {
+	t.Run("dump payment is handled successfully", TestDumpPayment_Success)
+	t.Run("dump payment where organisation id is missing", TestDumpPayment_MissingOrgID)
+	t.Run("dump payment where payment id is missing", TestDumpPayment_MissingPaymentID)
+	t.Run("dump payment where organisation id is not a valid uuid", TestDumpPayment_InvalidOrgID)
+	t.Run("dump payment where payment id is not a valid uuid", TestDumpPayment_InvalidID)
+	t.Run("dump payment where nats request fails", TestDumpPayment_QueueError)
+}
+
+func TestDumpPayment_Success(t *testing.T) {
+	f := SetupAPIServerTest(t)
+	req := httptest.NewRequest("POST", fmt.Sprintf("/v1/%v/%v/dump", uuid.Nil, uuid.Nil), nil)
+
+	f.nats.
+		On("Publish", string(models.DumpPaymentEvent), mock.Anything).
+		Return(nil)
+
+	f.server.Router.ServeHTTP(f.rr, req)
+	assert.Equal(t, http.StatusAccepted, f.rr.Code)
+}
+
+func TestDumpPayment_MissingOrgID(t *testing.T) {
+	f := SetupAPIServerTest(t)
+	req := httptest.NewRequest("POST", fmt.Sprintf("/v1//%v/dump", uuid.Nil), nil)
+
+	f.server.Router.ServeHTTP(f.rr, req)
+	assert.Equal(t, http.StatusNotFound, f.rr.Code)
+}
+
+func TestDumpPayment_MissingPaymentID(t *testing.T) {
+	f := SetupAPIServerTest(t)
+	req := httptest.NewRequest("POST", fmt.Sprintf("/v1/%v//dump", uuid.Nil), nil)
+
+	f.server.Router.ServeHTTP(f.rr, req)
+	assert.Equal(t, http.StatusNotFound, f.rr.Code)
+}
+
+func TestDumpPayment_InvalidOrgID(t *testing.T) {
+	f := SetupAPIServerTest(t)
+	req := httptest.NewRequest("POST", fmt.Sprintf("/v1/not-uuid/%v/dump", uuid.Nil), nil)
+
+	f.server.Router.ServeHTTP(f.rr, req)
+	assert.Equal(t, http.StatusNotFound, f.rr.Code)
+}
+
+func TestDumpPayment_InvalidID(t *testing.T) {
+	f := SetupAPIServerTest(t)
+	req := httptest.NewRequest("POST", fmt.Sprintf("/v1/%v/not-uuid/dump", uuid.Nil), nil)
+
+	f.server.Router.ServeHTTP(f.rr, req)
+	assert.Equal(t, http.StatusNotFound, f.rr.Code)
+}
+
+func TestDumpPayment_QueueError(t *testing.T) {
+	f := SetupAPIServerTest(t)
+	req := httptest.NewRequest("POST", fmt.Sprintf("/v1/%v/%v/dump", uuid.Nil, uuid.Nil), nil)
+
+	f.nats.
+		On("Publish", string(models.DumpPaymentEvent), mock.Anything).
+		Return(errors.New("queue error"))
+
+	f.server.Router.ServeHTTP(f.rr, req)
+	assert.Equal(t, http.StatusInternalServerError, f.rr.Code)
 }
