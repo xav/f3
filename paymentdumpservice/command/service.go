@@ -15,17 +15,30 @@
 package command
 
 import (
+	"encoding/json"
+	"fmt"
+	"time"
+
 	"github.com/apex/log"
 	"github.com/nats-io/nats.go"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/xav/f3/models"
 	"github.com/xav/f3/service"
 )
 
 type Start struct {
+	natsTimeout time.Duration
 }
 
-var config = service.Config{}
+var config = service.Config{
+}
+
+func NewStart() *Start {
+	return &Start{
+		natsTimeout: 100 * time.Millisecond,
+	}
+}
 
 // Init returns the runnable cobra command.
 func (c *Start) Init() *cobra.Command {
@@ -45,7 +58,7 @@ func (c *Start) Init() *cobra.Command {
 
 func (c *Start) start(cmd *cobra.Command, args []string) {
 	handlers := map[models.EventType]service.MsgHandler{
-		models.DumpPaymentEvent: HandleDumpPayment,
+		models.DumpPaymentEvent: c.HandleDumpPayment,
 	}
 	s := service.NewService("f3 payment dumping", handlers)
 	if err := s.Start(&config); err != nil {
@@ -53,6 +66,67 @@ func (c *Start) start(cmd *cobra.Command, args []string) {
 	}
 }
 
-func HandleDumpPayment(s *service.Service, msg *nats.Msg) error {
+func (c *Start) HandleDumpPayment(s *service.Service, msg *nats.Msg) error {
+	locator := models.ResourceLocator{}
+	if err := json.Unmarshal(msg.Data, &locator); err != nil {
+		return s.ReplyWithError(msg, err, "failed to unmarshal dump event locator")
+	}
+
+	locatorData, err := json.Marshal(models.ResourceLocator{
+		OrganisationID: locator.OrganisationID,
+		ID:             locator.ID,
+	})
+	if err != nil {
+		return s.ReplyWithError(msg, err, "failed to encode payment resource locator")
+	}
+
+	reply, err := s.Nats.Request(string(models.FetchPaymentEvent), locatorData, c.natsTimeout)
+	if err != nil {
+		return s.ReplyWithError(msg, err, "fetch request event failed")
+	}
+	replyEvent := models.Event{}
+	if err := json.Unmarshal(reply.Data, &replyEvent); err != nil {
+		return s.ReplyWithError(msg, err, "failed to decode reply locatorData")
+	}
+
+	switch replyEvent.EventType {
+	case models.ResourceFoundEvent:
+		eventKey := fmt.Sprintf("dump/%v/%v/%v/%v", models.PaymentResource, locator.OrganisationID, locator.ID, time.Now().Unix())
+		setReply, err := s.Redis.Do("SET", eventKey, replyEvent.Resource)
+		if err != nil {
+			return s.ReplyWithError(msg, err, "failed to store payment event")
+		}
+		log.Infof("dumped payment '%v / %v'", locator.OrganisationID, locator.ID)
+		if msg.Reply != "" {
+			if err = s.Nats.Publish(msg.Reply, []byte(setReply.(string))); err != nil {
+				return s.ReplyWithError(msg, err, "failed to reply to request")
+			}
+		}
+
+	case models.ResourceNotFoundEvent:
+		log.Warnf("payment '%v/%v' was not found", locator.OrganisationID.String(), locator.ID.String())
+		if msg.Reply != "" {
+			evtData, err := json.Marshal(models.Event{
+				EventType: models.ResourceNotFoundEvent,
+				Resource:  string(locatorData),
+			})
+			if err != nil {
+				return s.ReplyWithError(msg, err, "failed to encode fetch request reply")
+			}
+
+			if err = s.Nats.Publish(msg.Reply, evtData); err != nil {
+				return s.ReplyWithError(msg, err, "failed to reply to request")
+			}
+		}
+
+	case models.ServiceErrorEvent:
+		err := errors.New("service error")
+		return s.ReplyWithError(msg, err, fmt.Sprintf("query service failed to process fetch command: %v", replyEvent.Resource))
+
+	default:
+		err := errors.New("unrecognized event type")
+		return s.ReplyWithError(msg, err, fmt.Sprintf("unrecognised response to fetch request: '%v'", replyEvent.EventType))
+	}
+
 	return nil
 }
