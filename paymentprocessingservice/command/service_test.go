@@ -186,6 +186,9 @@ func TestCreatePayment_NoReply(t *testing.T) {
 	f.redis.
 		Command("SET", redigomock.NewAnyData(), redigomock.NewAnyData()).
 		Expect("OK")
+	f.nats.
+		On("Publish", string(models.PaymentCreatedEvent), mock.Anything).
+		Return(nil)
 
 	err := s.HandleCreatePayment(f.service, &nats.Msg{
 		Subject: string(models.CreatePaymentEvent),
@@ -336,6 +339,9 @@ func TestUpdatePayment_NoReply(t *testing.T) {
 	f.redis.
 		Command("SET", redigomock.NewAnyData(), redigomock.NewAnyData()).
 		Expect("OK")
+	f.nats.
+		On("Publish", string(models.PaymentUpdatedEvent), mock.Anything).
+		Return(nil)
 
 	err := s.HandleUpdatePayment(f.service, &nats.Msg{
 		Subject: string(models.UpdatePaymentEvent),
@@ -490,6 +496,9 @@ func TestDeletePayment_NoReply(t *testing.T) {
 	f.redis.
 		Command("SET", redigomock.NewAnyData(), redigomock.NewAnyData()).
 		Expect("OK")
+	f.nats.
+		On("Publish", string(models.PaymentDeletedEvent), mock.Anything).
+		Return(nil)
 
 	err := s.HandleDeletePayment(f.service, &nats.Msg{
 		Subject: string(models.DeletePaymentEvent),

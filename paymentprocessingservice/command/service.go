@@ -114,26 +114,29 @@ func (c *Start) HandleCreatePayment(s *service.Service, msg *nats.Msg) error {
 		return errors.Wrap(err, "failed to store payment event")
 	}
 
-	// Reply if needed
+	// Reply / publish creation
+	subject := string(models.PaymentCreatedEvent)
 	if msg.Reply != "" {
-		rt := models.PaymentResource
-		locatorBytes, err := json.Marshal(models.ResourceLocator{
-			ResourceType:   &rt,
-			OrganisationID: &payment.OrganisationID,
-			ID:             &payment.ID,
-		})
-		bytes, err = json.Marshal(models.Event{
-			EventType: models.ResourceFoundEvent,
-			Version:   version.(int64),
-			CreatedAt: creationTime,
-			Resource:  string(locatorBytes),
-		})
-		if err != nil {
-			return errors.Wrap(err, "failed to encode reply event data")
-		}
-		if err = s.Nats.Publish(msg.Reply, bytes); err != nil {
-			return errors.Wrap(err, "failed to reply to request")
-		}
+		subject = msg.Reply
+	}
+
+	rt := models.PaymentResource
+	locatorBytes, err := json.Marshal(models.ResourceLocator{
+		ResourceType:   &rt,
+		OrganisationID: &payment.OrganisationID,
+		ID:             &payment.ID,
+	})
+	bytes, err = json.Marshal(models.Event{
+		EventType: models.PaymentCreatedEvent,
+		Version:   version.(int64),
+		CreatedAt: creationTime,
+		Resource:  string(locatorBytes),
+	})
+	if err != nil {
+		return errors.Wrap(err, "failed to encode reply event data")
+	}
+	if err = s.Nats.Publish(subject, bytes); err != nil {
+		return errors.Wrap(err, "failed to reply to request")
 	}
 
 	log.Infof("created payment '%v / %v'", payment.OrganisationID, payment.ID)
@@ -184,26 +187,29 @@ func (c *Start) HandleUpdatePayment(s *service.Service, msg *nats.Msg) error {
 		return errors.Wrap(err, "failed to store payment event")
 	}
 
-	// Reply if needed
+	// Reply / publish creation
+	subject := string(models.PaymentUpdatedEvent)
 	if msg.Reply != "" {
-		rt := models.PaymentResource
-		locatorBytes, err := json.Marshal(models.ResourceLocator{
-			ResourceType:   &rt,
-			OrganisationID: &payment.OrganisationID,
-			ID:             &payment.ID,
-		})
-		bytes, err = json.Marshal(models.Event{
-			EventType: models.ResourceFoundEvent,
-			Version:   version.(int64),
-			UpdatedAt: &updateTime,
-			Resource:  string(locatorBytes),
-		})
-		if err != nil {
-			return errors.Wrap(err, "failed to encode reply event data")
-		}
-		if err = s.Nats.Publish(msg.Reply, bytes); err != nil {
-			return errors.Wrap(err, "failed to reply to request")
-		}
+		subject = msg.Reply
+	}
+
+	rt := models.PaymentResource
+	locatorBytes, err := json.Marshal(models.ResourceLocator{
+		ResourceType:   &rt,
+		OrganisationID: &payment.OrganisationID,
+		ID:             &payment.ID,
+	})
+	bytes, err = json.Marshal(models.Event{
+		EventType: models.PaymentUpdatedEvent,
+		Version:   version.(int64),
+		UpdatedAt: &updateTime,
+		Resource:  string(locatorBytes),
+	})
+	if err != nil {
+		return errors.Wrap(err, "failed to encode reply event data")
+	}
+	if err = s.Nats.Publish(subject, bytes); err != nil {
+		return errors.Wrap(err, "failed to reply to request")
 	}
 
 	log.Infof("update payment '%v / %v' (%v)", payment.OrganisationID, payment.ID, version)
@@ -254,21 +260,24 @@ func (c *Start) HandleDeletePayment(s *service.Service, msg *nats.Msg) error {
 		return errors.Wrap(err, "failed to store payment event")
 	}
 
-	// Reply if needed
+	// Reply / publish creation
+	subject := string(models.PaymentDeletedEvent)
 	if msg.Reply != "" {
-		evt := models.Event{
-			EventType: models.ResourceFoundEvent,
-			Version:   version.(int64),
-			UpdatedAt: &updateTime,
-			Resource:  string(locatorBytes),
-		}
-		bytes, err = json.Marshal(evt)
-		if err != nil {
-			return errors.Wrap(err, "failed to encode reply event data")
-		}
-		if err = s.Nats.Publish(msg.Reply, bytes); err != nil {
-			return errors.Wrap(err, "failed to reply to request")
-		}
+		subject = msg.Reply
+	}
+
+	evt := models.Event{
+		EventType: models.PaymentDeletedEvent,
+		Version:   version.(int64),
+		UpdatedAt: &updateTime,
+		Resource:  string(locatorBytes),
+	}
+	bytes, err = json.Marshal(evt)
+	if err != nil {
+		return errors.Wrap(err, "failed to encode reply event data")
+	}
+	if err = s.Nats.Publish(subject, bytes); err != nil {
+		return errors.Wrap(err, "failed to reply to request")
 	}
 
 	log.Infof("delete payment '%v / %v' (%v)", locator.OrganisationID, locator.ID, version)
