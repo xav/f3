@@ -29,6 +29,11 @@ const (
 	FetchPaymentEvent EventType = "payment:fetch"
 	ListPaymentEvent  EventType = "payment:list"
 	DumpPaymentEvent  EventType = "payment:dump"
+
+	PaymentCreatedEvent EventType = "payment:created"
+	PaymentUpdatedEvent EventType = "payment:updated"
+	PaymentDeletedEvent EventType = "payment:deleted"
+	PaymentDumpedEvent  EventType = "payment:dumped"
 )
 
 const (
