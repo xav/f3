@@ -9,11 +9,10 @@ require (
 	github.com/go-chi/render v1.0.1
 	github.com/go-chi/valve v0.0.0-20170920024740-9e45288364f4
 	github.com/google/uuid v1.1.1
-	github.com/nats-io/nats-server v1.4.1 // indirect
-	github.com/nats-io/nats.go v1.8.0
+	github.com/nats-io/nats.go v1.8.1
 	github.com/pkg/errors v0.8.1
 	github.com/spf13/cobra v0.0.4
 	github.com/stretchr/testify v1.3.0
-	github.com/xav/f3/f3nats v0.0.0-20190604103941-b67a9f82a493
-	github.com/xav/f3/models v0.0.0-20190604103941-b67a9f82a493
+	github.com/xav/f3/f3nats v0.0.0-20190604142800-57ea6e5612c4
+	github.com/xav/f3/models v0.0.0-20190604142800-57ea6e5612c4
 )
