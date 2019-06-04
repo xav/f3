@@ -111,7 +111,9 @@ func TestHandleDumpPayment_UnrecognisedResponse(t *testing.T) {
 	f := SetupTest(t)
 	s := NewTestStart(t)
 
+	rt := models.PaymentResource
 	locator := models.ResourceLocator{
+		ResourceType:   &rt,
 		OrganisationID: &uuid.Nil,
 		ID:             &uuid.Nil,
 	}
@@ -146,7 +148,9 @@ func TestHandleDumpPayment_NotFound(t *testing.T) {
 	s := NewTestStart(t)
 
 	id := uuid.New()
+	rt := models.PaymentResource
 	locator := models.ResourceLocator{
+		ResourceType:   &rt,
 		OrganisationID: &id,
 		ID:             &id,
 	}

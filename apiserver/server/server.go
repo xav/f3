@@ -161,7 +161,9 @@ func (s *Server) ListVersions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) ListPayments(w http.ResponseWriter, r *http.Request) {
+	rt := models.PaymentResource
 	data, err := json.Marshal(models.ResourceLocator{
+		ResourceType:   &rt,
 		OrganisationID: nil,
 		ID:             nil,
 	})
@@ -244,7 +246,9 @@ func (s *Server) FetchPayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	rt := models.PaymentResource
 	data, err := json.Marshal(models.ResourceLocator{
+		ResourceType:   &rt,
 		OrganisationID: &oid,
 		ID:             &pid,
 	})
@@ -331,7 +335,9 @@ func (s *Server) DeletePayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	rt := models.PaymentResource
 	data, err := json.Marshal(models.ResourceLocator{
+		ResourceType:   &rt,
 		OrganisationID: &oid,
 		ID:             &pid,
 	})
@@ -391,7 +397,9 @@ func (s *Server) DumpPayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	rt := models.PaymentResource
 	data, err := json.Marshal(models.ResourceLocator{
+		ResourceType:   &rt,
 		OrganisationID: &oid,
 		ID:             &pid,
 	})

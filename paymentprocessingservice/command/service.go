@@ -98,24 +98,40 @@ func (c *Start) HandleCreatePayment(s *service.Service, msg *nats.Msg) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal payment data")
 	}
+	creationTime := time.Now().Unix()
 	bytes, err := json.Marshal(models.Event{
 		EventType: models.CreatePaymentEvent,
 		Version:   version.(int64),
-		CreatedAt: time.Now().Unix(),
+		CreatedAt: creationTime,
 		Resource:  string(paymentBytes),
 	})
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal event data")
 	}
 	eventKey := fmt.Sprintf(models.EventKeyTemplate, models.PaymentResource, payment.OrganisationID, payment.ID, version)
-	reply, err := s.Redis.Do("SET", eventKey, bytes)
+	_, err = s.Redis.Do("SET", eventKey, bytes)
 	if err != nil {
 		return errors.Wrap(err, "failed to store payment event")
 	}
 
 	// Reply if needed
 	if msg.Reply != "" {
-		if err = s.Nats.Publish(msg.Reply, []byte(reply.(string))); err != nil {
+		rt := models.PaymentResource
+		locatorBytes, err := json.Marshal(models.ResourceLocator{
+			ResourceType:   &rt,
+			OrganisationID: &payment.OrganisationID,
+			ID:             &payment.ID,
+		})
+		bytes, err = json.Marshal(models.Event{
+			EventType: models.ResourceFoundEvent,
+			Version:   version.(int64),
+			CreatedAt: creationTime,
+			Resource:  string(locatorBytes),
+		})
+		if err != nil {
+			return errors.Wrap(err, "failed to encode reply event data")
+		}
+		if err = s.Nats.Publish(msg.Reply, bytes); err != nil {
 			return errors.Wrap(err, "failed to reply to request")
 		}
 	}
@@ -152,24 +168,40 @@ func (c *Start) HandleUpdatePayment(s *service.Service, msg *nats.Msg) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal payment data")
 	}
+	updateTime := time.Now().Unix()
 	bytes, err := json.Marshal(models.Event{
 		EventType: models.UpdatePaymentEvent,
 		Version:   version.(int64),
-		CreatedAt: time.Now().Unix(),
+		CreatedAt: updateTime,
 		Resource:  string(paymentBytes),
 	})
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal event data")
 	}
 	eventKey := fmt.Sprintf(models.EventKeyTemplate, models.PaymentResource, payment.OrganisationID, payment.ID, version)
-	reply, err := s.Redis.Do("SET", eventKey, bytes)
+	_, err = s.Redis.Do("SET", eventKey, bytes)
 	if err != nil {
 		return errors.Wrap(err, "failed to store payment event")
 	}
 
 	// Reply if needed
 	if msg.Reply != "" {
-		if err = s.Nats.Publish(msg.Reply, []byte(reply.(string))); err != nil {
+		rt := models.PaymentResource
+		locatorBytes, err := json.Marshal(models.ResourceLocator{
+			ResourceType:   &rt,
+			OrganisationID: &payment.OrganisationID,
+			ID:             &payment.ID,
+		})
+		bytes, err = json.Marshal(models.Event{
+			EventType: models.ResourceFoundEvent,
+			Version:   version.(int64),
+			UpdatedAt: &updateTime,
+			Resource:  string(locatorBytes),
+		})
+		if err != nil {
+			return errors.Wrap(err, "failed to encode reply event data")
+		}
+		if err = s.Nats.Publish(msg.Reply, bytes); err != nil {
 			return errors.Wrap(err, "failed to reply to request")
 		}
 	}
@@ -206,24 +238,35 @@ func (c *Start) HandleDeletePayment(s *service.Service, msg *nats.Msg) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal payment data")
 	}
+	updateTime := time.Now().Unix()
 	bytes, err := json.Marshal(models.Event{
 		EventType: models.DeletePaymentEvent,
 		Version:   version.(int64),
-		CreatedAt: time.Now().Unix(),
+		CreatedAt: updateTime,
 		Resource:  string(locatorBytes),
 	})
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal event data")
 	}
 	eventKey := fmt.Sprintf(models.EventKeyTemplate, models.PaymentResource, locator.OrganisationID, locator.ID, version)
-	reply, err := s.Redis.Do("SET", eventKey, bytes)
+	_, err = s.Redis.Do("SET", eventKey, bytes)
 	if err != nil {
 		return errors.Wrap(err, "failed to store payment event")
 	}
 
 	// Reply if needed
 	if msg.Reply != "" {
-		if err = s.Nats.Publish(msg.Reply, []byte(reply.(string))); err != nil {
+		evt := models.Event{
+			EventType: models.ResourceFoundEvent,
+			Version:   version.(int64),
+			UpdatedAt: &updateTime,
+			Resource:  string(locatorBytes),
+		}
+		bytes, err = json.Marshal(evt)
+		if err != nil {
+			return errors.Wrap(err, "failed to encode reply event data")
+		}
+		if err = s.Nats.Publish(msg.Reply, bytes); err != nil {
 			return errors.Wrap(err, "failed to reply to request")
 		}
 	}

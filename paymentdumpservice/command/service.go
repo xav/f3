@@ -72,7 +72,9 @@ func (c *Start) HandleDumpPayment(s *service.Service, msg *nats.Msg) error {
 		return s.ReplyWithError(msg, err, "failed to unmarshal dump event locator")
 	}
 
+	rt := models.PaymentResource
 	locatorData, err := json.Marshal(models.ResourceLocator{
+		ResourceType:   &rt,
 		OrganisationID: locator.OrganisationID,
 		ID:             locator.ID,
 	})

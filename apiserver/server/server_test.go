@@ -1108,7 +1108,9 @@ func TestDeletePayment(t *testing.T) {
 
 func TestDeletePayment_Success(t *testing.T) {
 	f := SetupAPIServerTest(t)
+	rt := models.PaymentResource
 	locator := models.ResourceLocator{
+		ResourceType:   &rt,
 		OrganisationID: &uuid.Nil,
 		ID:             &uuid.Nil,
 	}
@@ -1198,7 +1200,9 @@ func TestDeletePayment_QueueError(t *testing.T) {
 
 func TestDeletePayment_NotFound(t *testing.T) {
 	f := SetupAPIServerTest(t)
+	rt := models.PaymentResource
 	locator := models.ResourceLocator{
+		ResourceType:   &rt,
 		OrganisationID: &uuid.Nil,
 		ID:             &uuid.Nil,
 	}
@@ -1227,7 +1231,9 @@ func TestDeletePayment_NotFound(t *testing.T) {
 
 func TestDeletePayment_UnrecognisedResponse(t *testing.T) {
 	f := SetupAPIServerTest(t)
+	rt := models.PaymentResource
 	locator := models.ResourceLocator{
+		ResourceType:   &rt,
 		OrganisationID: &uuid.Nil,
 		ID:             &uuid.Nil,
 	}
